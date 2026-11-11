@@ -285,6 +285,23 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(w, f)
 		return
 	}
+	if len(parts) == 2 && parts[1] == "log" {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		f, err := os.Open(filepath.Join(s.output, id+".log"))
+		if errors.Is(err, os.ErrNotExist) {
+			return
+		}
+		if err != nil {
+			http.Error(w, "could not read job log", http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+		if _, err = io.Copy(w, f); err != nil {
+			return
+		}
+		return
+	}
 	if len(parts) != 1 {
 		http.NotFound(w, r)
 		return

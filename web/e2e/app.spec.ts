@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { devices, expect, test } from '@playwright/test';
 
 const optionReference = {
   main_build_settings: {
@@ -74,7 +74,7 @@ test('submits selected settings, displays a completed build, and downloads its W
   const playHref = await page.getByRole('link', { name: /Play in UZDoom/ }).getAttribute('href');
   expect(playHref).toContain('/play/?');
   const playUrl = new URL(playHref!, 'http://localhost');
-  expect(playUrl.searchParams.get('iwad')).toBe('freedoom1.wad');
+  expect(playUrl.searchParams.get('iwad')).toBe('doom.wad');
   expect(playUrl.searchParams.get('modurl')).toBe('/api/jobs/job-123/download');
   expect(playUrl.searchParams.get('warp')).toBe('1,1');
   expect(submitted).toEqual({
@@ -92,6 +92,76 @@ test('submits selected settings, displays a completed build, and downloads its W
   await expect(page.locator('[name="seed"]')).toHaveValue('e2e-seed');
   await expect(page.locator('[name="option.float_size"]')).toHaveValue('8');
   await expect(page.locator('[name="option.walls"]')).toHaveValue('metal');
+});
+
+test('adds persisted dual-stick controls only in a touch browser', async ({ browser, page }) => {
+  await page.goto('/');
+  await page.addScriptTag({ url: '/player/touch-controls.js' });
+  const desktopControls = await page.evaluate(() => {
+    const api = (window as unknown as { ObsidianTouchControls: { install: (options: unknown) => unknown } }).ObsidianTouchControls;
+    return api.install({ windowRef: window, documentRef: document, canvas: document.createElement('canvas') });
+  });
+  expect(desktopControls).toBeNull();
+  await expect(page.locator('.obsidian-touch-controls')).toHaveCount(0);
+
+  const context = await browser.newContext({ ...devices['iPhone 13'] });
+  const touchPage = await context.newPage();
+  await touchPage.goto('/');
+  await touchPage.addScriptTag({ url: '/player/touch-controls.js' });
+  await touchPage.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'canvas';
+    document.body.appendChild(canvas);
+    const api = (window as unknown as {
+      ObsidianTouchControls: { install: (options: unknown) => { show: () => void } | null };
+    }).ObsidianTouchControls;
+    const controls = api.install({ windowRef: window, documentRef: document, canvas });
+    (window as unknown as { touchKeys: string[] }).touchKeys = [];
+    canvas.addEventListener('keydown', (event) => (window as unknown as { touchKeys: string[] }).touchKeys.push(`down:${(event as KeyboardEvent).code}`));
+    canvas.addEventListener('keyup', (event) => (window as unknown as { touchKeys: string[] }).touchKeys.push(`up:${(event as KeyboardEvent).code}`));
+    controls?.show();
+  });
+  await expect(touchPage.getByRole('application', { name: 'Move stick' })).toBeVisible();
+  await expect(touchPage.getByRole('application', { name: 'Turn and look stick' })).toBeVisible();
+
+  const leftStick = touchPage.locator('.touch-left');
+  const bounds = await leftStick.boundingBox();
+  expect(bounds).not.toBeNull();
+  const pointer = { pointerId: 7, pointerType: 'touch', clientX: bounds!.x + bounds!.width / 2, clientY: bounds!.y + bounds!.height / 2 };
+  await leftStick.dispatchEvent('pointerdown', pointer);
+  await leftStick.dispatchEvent('pointermove', { ...pointer, clientY: pointer.clientY - 45 });
+  expect(await touchPage.evaluate(() => (window as unknown as { touchKeys: string[] }).touchKeys)).toContain('down:KeyW');
+  await leftStick.dispatchEvent('pointerup', { ...pointer, clientY: pointer.clientY - 45 });
+  expect(await touchPage.evaluate(() => (window as unknown as { touchKeys: string[] }).touchKeys)).toContain('up:KeyW');
+
+  await touchPage.getByRole('button', { name: 'Preview control settings' }).click();
+  await touchPage.locator('[data-setting="opacity"]').evaluate((node) => {
+    const slider = node as HTMLInputElement;
+    slider.value = '0.75';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(await touchPage.evaluate(() => JSON.parse(localStorage.getItem('obsidian-web:player-preview:v1') || '{}').opacity)).toBe(0.75);
+  await context.close();
+});
+
+test('selects the local IWAD matching each generated game type', async ({ page }) => {
+  await mockReference(page);
+  const mappings:Record<string,string> = {
+    doom1:'doom.wad', ultdoom:'doom.wad', doom2:'doom2.wad',
+    tnt:'tnt.wad', plutonia:'plutonia.wad', heretic:'heretic.wad',
+    hexen:'hexen.wad', strife:'strife1.wad', hacx:'hacx.wad', chex3:'chex3.wad',
+  };
+  await page.route(jobsEndpoint, (route) => route.fulfill({ json: Object.entries(mappings).map(([game], index) => ({
+    id: `iwad-${index}`, status: 'completed', createdAt: '2026-01-02T03:04:05Z', file: `/api/jobs/iwad-${index}/download`,
+    settings: { game, port: 'zdoom', theme: 'original', length: 'single', seed: '', options: {} },
+  })) }));
+  await page.goto('/');
+  for (const [index, [game, iwad]] of Object.entries(mappings).entries()) {
+    const card = page.locator(`.job[data-job-id="iwad-${index}"]`);
+    const href = await card.locator('.play-test').getAttribute('href');
+    expect(new URL(href!, 'http://localhost').searchParams.get('iwad'), game).toBe(iwad);
+    await expect(card.locator('.play-test')).toBeVisible();
+  }
 });
 
 test('shows a failed generation message without rendering it as HTML', async ({ page }) => {
@@ -114,14 +184,35 @@ test('shows live output for a running generator and restores last settings from 
   await page.route(jobsEndpoint, (route) => route.fulfill({ json: [{
     id: 'live-1', status: 'running', createdAt: '2026-01-02T03:04:05Z', settings: { game: 'doom2', port: 'boom', theme: 'original', length: 'game', seed: '', options: {} },
   }] }));
-  await page.route('**/api/jobs/live-1/logs', (route) => route.fulfill({ body: 'building room 12\n', contentType: 'text/plain' }));
+  const tailLines = Array.from({ length: 25 }, (_, index) => `building room ${index + 1}`).join('\n') + '\n';
+  await page.route('**/api/jobs/live-1/logs', (route) => route.fulfill({ body: tailLines, contentType: 'text/plain' }));
+  await page.context().route('**/api/jobs/live-1/log', (route) => route.fulfill({ body: 'complete plaintext log from start to finish', contentType: 'text/plain' }));
   await page.goto('/');
   await expect(page.locator('[name="core.game"]')).toHaveValue('doom1');
   await expect(page.locator('[name="core.port"]')).toHaveValue('zdoom');
   await expect(page.locator('[name="seed"]')).toHaveValue('remember-me');
   await expect(page.locator('[name="option.float_size"]')).toHaveValue('8');
   await expect(page.locator('.job-logs summary')).toHaveText('Live generator log');
-  await expect(page.locator('.job-logs pre')).toContainText('building room 12');
+  const logPane = page.locator('.job-logs pre');
+  await expect(logPane).toContainText('building room 25');
+  await expect(logPane).not.toContainText('building room 5');
+  expect(await logPane.evaluate((node) => getComputedStyle(node).whiteSpace)).toBe('pre');
+  await page.evaluate(() => {
+    (window as unknown as { queueMutations: number }).queueMutations = 0;
+    const observer = new MutationObserver((records) => {
+      const state = window as unknown as { queueMutations: number };
+      state.queueMutations += records.length;
+    });
+    observer.observe(document.querySelector('#jobs')!, { childList: true, characterData: true, subtree: true });
+  });
+  await page.waitForTimeout(2700);
+  expect(await page.evaluate(() => (window as unknown as { queueMutations: number }).queueMutations)).toBe(0);
+  const fullLogLink = page.getByRole('link', { name: 'Open full log ↗' });
+  await expect(fullLogLink).toHaveAttribute('target', '_blank');
+  const popupPromise = page.waitForEvent('popup');
+  await fullLogLink.click();
+  const popup = await popupPromise;
+  await expect(popup.locator('pre')).toHaveText('complete plaintext log from start to finish');
 });
 
 test('keeps the most recent form settings after a page reload', async ({ page }) => {

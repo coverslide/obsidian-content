@@ -109,6 +109,13 @@ function Render_edge(LEVEL, E, SEEDS)
     if geom.is_corner(E.dir) then
       reqs.where = "diagonal"
       reqs.seed_h = reqs.seed_w
+
+      -- Some games (notably Heretic) have no diagonal window prefabs.  A
+      -- diagonal window can safely fall back to a solid diagonal wall.
+      if not LEVEL.PREFABS_BUCKET.diagonal_window then
+        gui.printf("--WARNING-- No diagonal window prefabs for game: " .. OB_CONFIG.game .. "\n")
+        return nil
+      end
     else
       reqs.where = "edge"
     end
@@ -736,6 +743,10 @@ function Render_edge(LEVEL, E, SEEDS)
 
     if E.kind == "window" then
       def = pick_window_fab()
+      if not def then
+        E.kind = "wall"
+        return edge_wall()
+      end
     else
       def = E.prefab_def
     end

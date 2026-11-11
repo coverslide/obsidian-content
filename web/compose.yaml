@@ -9,6 +9,7 @@ services:
     volumes:
       - obsidian-data:/data
       - obsidian-wads:/wads
+      - /mnt/Games/doom-wad/iwad:/opt/uzdoom-player/private:ro
       - ./config:/config:ro
     restart: unless-stopped
 

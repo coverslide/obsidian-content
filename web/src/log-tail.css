@@ -1,0 +1,18 @@
+.job-logs pre {
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.full-log {
+  display: inline-block;
+  margin: 7px 10px;
+  color: #aaca79;
+  font: 9px 'DM Mono';
+  text-decoration: none;
+}
+
+.full-log:hover {
+  text-decoration: underline;
+}

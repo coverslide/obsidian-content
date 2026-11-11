@@ -1,12 +1,18 @@
 import CustomElement from '@coverslide/customelement';
 import { escapeHTML, jobPayload, optionFieldHTML, type OptionReference } from './options';
 import './style.css';
+import './log-tail.css';
 
 type JobSettings = { game:string; port:string; theme:string; length:string; seed:string; options:Record<string,string> };
 type Job = { id:string; status:string; createdAt:string; error?:string; file?:string; settings?:JobSettings };
 const lastSettingsKey = 'obsidian-web:last-settings:v1';
 const recentLimit = 5;
 const historyPageSize = 20;
+const previewIWADs:Record<string,string> = {
+  doom1:'doom.wad', ultdoom:'doom.wad', doom2:'doom2.wad',
+  tnt:'tnt.wad', plutonia:'plutonia.wad', heretic:'heretic.wad',
+  hexen:'hexen.wad', strife:'strife1.wad', hacx:'hacx.wad', chex3:'chex3.wad',
+};
 
 class ObsidianApp extends CustomElement {
   static localName = 'app';
@@ -15,6 +21,7 @@ class ObsidianApp extends CustomElement {
   private timer?:number;
   private page = 1;
   private logContents = new Map<string,string>();
+  private jobSnapshots = new Map<string,string>();
   private routeListener = () => this.renderRoute();
 
   connectedCallback() {
@@ -116,18 +123,26 @@ class ObsidianApp extends CustomElement {
 
   private renderJobs(host:HTMLElement, jobs:Job[]) {
     if (!jobs.length) {
-      host.innerHTML = '<div class="empty"><span>✳</span><p>No runs yet</p><small>Your generated worlds will appear here.</small></div>';
+      if (!host.querySelector('.empty')) {
+        host.innerHTML = '<div class="empty"><span>✳</span><p>No runs yet</p><small>Your generated worlds will appear here.</small></div>';
+        this.jobSnapshots.clear();
+        this.logContents.clear();
+      }
       return;
     }
     host.querySelector('.empty')?.remove();
     const cards = new Map(Array.from(host.querySelectorAll<HTMLElement>('.job[data-job-id]')).map(card => [card.dataset.jobId!, card]));
     const logsToFetch = jobs.map(async (job, index) => {
       const existing = cards.get(job.id);
-      const shouldFetch = job.status === 'running' || job.status === 'failed' || (job.status === 'completed' && (index < recentLimit || existing?.dataset.hasLog === 'true'));
+      const shouldFetch = job.status === 'running' || ((job.status === 'failed' || (job.status === 'completed' && index < recentLimit)) && existing?.dataset.logLoaded !== 'true');
       if (!shouldFetch) return;
       try {
         const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/logs`);
-        if (response.ok) this.appendLog(job.id, await response.text());
+        if (response.ok) {
+          const log = await response.text();
+          this.appendLog(job.id, log);
+          cards.get(job.id)!.dataset.logLoaded = 'true';
+        }
       } catch { /* Keep the most recent log text already displayed. */ }
     });
 
@@ -136,13 +151,24 @@ class ObsidianApp extends CustomElement {
       if (!card) {
         card = this.createJobCard(job);
         cards.set(job.id, card);
+        this.updateJobCard(card, job);
+        this.jobSnapshots.set(job.id, JSON.stringify(job));
+      } else {
+        const snapshot = JSON.stringify(job);
+        if (this.jobSnapshots.get(job.id) !== snapshot) {
+          this.updateJobCard(card, job);
+          this.jobSnapshots.set(job.id, snapshot);
+        }
       }
-      this.updateJobCard(card, job);
       const current = host.children[index];
       if (current !== card) host.insertBefore(card, current ?? null);
     });
     const visibleIds = new Set(jobs.map(job => job.id));
-    for (const [id, card] of cards) if (!visibleIds.has(id)) card.remove();
+    for (const [id, card] of cards) if (!visibleIds.has(id)) {
+      card.remove();
+      this.jobSnapshots.delete(id);
+      this.logContents.delete(id);
+    }
     void Promise.all(logsToFetch);
   }
 
@@ -150,7 +176,7 @@ class ObsidianApp extends CustomElement {
     const card = document.createElement('article');
     card.className = 'job';
     card.dataset.jobId = job.id;
-    card.innerHTML = `<div class="job-top"><span class="job-icon"></span><div class="job-info"><strong></strong><small></small></div><span class="status"></span></div><div class="progress"><i></i></div><div class="job-actions"><a class="download">Download WAD <span>↓</span></a><a class="play-test" target="_blank" rel="noopener">Play in UZDoom <span>↗</span></a></div><p class="error"></p><button class="reuse-settings" type="button">Reuse settings</button><details class="job-logs"><summary></summary><pre></pre></details>`;
+    card.innerHTML = `<div class="job-top"><span class="job-icon"></span><div class="job-info"><strong></strong><small></small></div><span class="status"></span></div><div class="progress"><i></i></div><div class="job-actions"><a class="download">Download WAD <span>↓</span></a><a class="play-test" target="_blank" rel="noopener">Play in UZDoom <span>↗</span></a></div><p class="error"></p><button class="reuse-settings" type="button">Reuse settings</button><details class="job-logs"><summary></summary><a class="full-log" target="_blank" rel="noopener">Open full log <span>↗</span></a><pre></pre></details>`;
     const details = card.querySelector<HTMLDetailsElement>('.job-logs')!;
     details.open = job.status === 'running' || job.status === 'failed';
     return card;
@@ -168,11 +194,10 @@ class ObsidianApp extends CustomElement {
     download.hidden = job.status !== 'completed' || !job.file;
     if (job.file) download.href = job.file;
     const play = card.querySelector<HTMLAnchorElement>('.play-test')!;
-    const game = job.settings?.game;
-    const iwad = game === 'doom1' || game === 'ultdoom' ? 'freedoom1.wad' : game === 'doom2' ? 'freedoom2.wad' : undefined;
+    const iwad = job.settings?.game ? previewIWADs[job.settings.game] : undefined;
     play.hidden = job.status !== 'completed' || !job.file || !iwad;
     if (iwad) {
-      const params = new URLSearchParams({ iwad, modurl: `/api/jobs/${encodeURIComponent(job.id)}/download`, warp: iwad === 'freedoom1.wad' ? '1,1' : '1' });
+      const params = new URLSearchParams({ iwad, modurl: `/api/jobs/${encodeURIComponent(job.id)}/download`, warp: iwad === 'doom.wad' ? '1,1' : '1' });
       play.href = `/play/?${params.toString()}`;
     }
     const error = card.querySelector<HTMLElement>('.error')!;
@@ -184,6 +209,7 @@ class ObsidianApp extends CustomElement {
     const details = card.querySelector<HTMLDetailsElement>('.job-logs')!;
     details.hidden = job.status === 'queued' || (job.status === 'completed' && card.dataset.hasLog !== 'true');
     details.querySelector('summary')!.textContent = job.status === 'running' ? 'Live generator log' : 'Generator log';
+    details.querySelector<HTMLAnchorElement>('.full-log')!.href = `/api/jobs/${encodeURIComponent(job.id)}/log`;
     if ((job.status === 'running' || job.status === 'failed') && !this.logContents.has(job.id)) {
       details.querySelector('pre')!.textContent = job.status === 'running' ? 'Waiting for generator output…' : (job.error || 'No log output recorded');
     }
@@ -199,6 +225,8 @@ class ObsidianApp extends CustomElement {
     if (!previous) pre.textContent = '';
     if (next.startsWith(previous)) pre.append(document.createTextNode(next.slice(previous.length)));
     else pre.textContent = next;
+    const lines = pre.textContent!.replace(/\n$/, '').split(/\r?\n/);
+    if (lines.length > 20) pre.textContent = lines.slice(-20).join('\n');
     this.logContents.set(id, next);
     card.dataset.hasLog = 'true';
     card.querySelector<HTMLDetailsElement>('.job-logs')!.hidden = false;

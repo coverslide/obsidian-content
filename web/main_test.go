@@ -334,6 +334,18 @@ func TestJobStatusAndDownload(t *testing.T) {
 	if w.Code != http.StatusOK || w.Body.String() != logText || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
 		t.Fatalf("job logs: status=%d type=%q body=%q", w.Code, w.Header().Get("Content-Type"), w.Body.String())
 	}
+	fullLogText := strings.Repeat("complete plaintext log line\n", 4000)
+	if err := os.WriteFile(filepath.Join(s.output, id+".log"), []byte(fullLogText), 0600); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	s.job(w, httptest.NewRequest(http.MethodGet, "/api/jobs/"+id+"/log", nil))
+	if w.Code != http.StatusOK || w.Body.String() != fullLogText || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("full job log: status=%d type=%q length=%d", w.Code, w.Header().Get("Content-Type"), w.Body.Len())
+	}
+	if err := os.WriteFile(filepath.Join(s.output, id+".log"), []byte(logText), 0600); err != nil {
+		t.Fatal(err)
+	}
 	w = httptest.NewRecorder()
 	s.job(w, httptest.NewRequest(http.MethodGet, "/api/jobs/missing", nil))
 	if w.Code != http.StatusNotFound {
