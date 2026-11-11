@@ -325,7 +325,7 @@ func TestJobStatusAndDownload(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"status":"queued"`) {
 		t.Fatalf("queued status: %d %s", w.Code, w.Body)
 	}
-	logText := "starting generator\nplacing rooms\n"
+	logText := "Game title: Chaos: Filthy Wind\nstarting generator\nplacing rooms\n"
 	if err := os.WriteFile(filepath.Join(s.output, id+".log"), []byte(logText), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -365,8 +365,21 @@ func TestJobStatusAndDownload(t *testing.T) {
 	if w.Code != http.StatusOK || w.Body.String() != "PWADDATA" {
 		t.Fatalf("download: %d %q", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Header().Get("Content-Disposition"), id) {
-		t.Fatalf("missing filename header: %q", w.Header().Get("Content-Disposition"))
+	if got := w.Header().Get("Content-Disposition"); got != `attachment; filename="Chaos Filthy Wind.wad"` {
+		t.Fatalf("download filename=%q, want title-based filename", got)
+	}
+}
+
+func TestWADAttachmentFilenameFallsBackAndSanitizesTitle(t *testing.T) {
+	output := t.TempDir()
+	if err := os.WriteFile(filepath.Join(output, "unsafe.log"), []byte("Game title: ../../\"\r\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if got := wadAttachmentFilename("unsafe", output); got != "obsidian-unsafe.wad" {
+		t.Errorf("unsafe title filename=%q, want fallback", got)
+	}
+	if got := wadAttachmentFilename("missing", output); got != "obsidian-missing.wad" {
+		t.Errorf("missing title filename=%q, want fallback", got)
 	}
 }
 

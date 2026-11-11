@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"bufio"
 	"context"
 	"database/sql"
 	"embed"
@@ -20,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -248,7 +250,9 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 		}
 		name := id + ".wad"
 		w.Header().Set("Content-Type", "application/octet-stream")
-		w.Header().Set("Content-Disposition", `attachment; filename="obsidian-`+id+`.wad"`)
+		w.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{
+			"filename": wadAttachmentFilename(id, s.output),
+		}))
 		http.ServeFile(w, r, filepath.Join(s.output, name))
 		return
 	}
@@ -290,6 +294,41 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 	}
 	jsonOut(w, j)
 }
+
+func wadAttachmentFilename(id, output string) string {
+	title := ""
+	file, err := os.Open(filepath.Join(output, id+".log"))
+	if err == nil {
+		scanner := bufio.NewScanner(io.LimitReader(file, 64*1024))
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if strings.HasPrefix(line, "Game title:") {
+				title = strings.TrimSpace(strings.TrimPrefix(line, "Game title:"))
+				break
+			}
+		}
+		_ = file.Close()
+	}
+
+	var safe []rune
+	for _, char := range title {
+		if unicode.IsLetter(char) || unicode.IsNumber(char) || char == '-' || char == '_' {
+			safe = append(safe, char)
+		} else if len(safe) > 0 && safe[len(safe)-1] != ' ' {
+			safe = append(safe, ' ')
+		}
+	}
+	clean := strings.TrimSpace(string(safe))
+	if len([]rune(clean)) > 96 {
+		clean = string([]rune(clean)[:96])
+		clean = strings.TrimSpace(clean)
+	}
+	if clean == "" {
+		return "obsidian-" + id + ".wad"
+	}
+	return clean + ".wad"
+}
+
 func (s *Server) worker() {
 	for id := range s.queue {
 		ctx, cancel := context.WithTimeout(context.Background(), 45*time.Minute)
