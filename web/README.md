@@ -2,6 +2,8 @@
 
 Browser interface for generating Obsidian maps. Go runs the job queue and persists job metadata and submitted settings in SQLite; Vite builds the TypeScript custom-element frontend using `@coverslide/customelement`, which is embedded in the production Go executable. The service loads Obsidian's option reference from `--printref-json` and presents its settings in collapsible groups. Running and failed jobs show a live tail of Obsidian's log, and each run can repopulate the settings form. The latest form settings are also saved in browser local storage. Generated WAD files stay in a persistent volume and can be downloaded from the job list.
 
+Completed Doom and Doom II jobs also have a **Play in UZDoom** link. The UZDoom WebAssembly engine and Freedoom IWADs are bundled into the same Docker image and served locally under `/play/`; the browser does not fetch the engine or fonts from a CDN. The link loads the generated WAD as a mod and starts its first map with the matching Freedoom IWAD. Cross-origin isolation headers are enabled for the WebAssembly engine's shared-memory support. The bundled engine's GPL license and attribution are in `player/`.
+
 ## Run with Docker Compose
 
 From this directory:

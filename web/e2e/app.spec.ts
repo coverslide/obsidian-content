@@ -71,6 +71,12 @@ test('submits selected settings, displays a completed build, and downloads its W
 
   await expect(page.getByText(/OBSIDIAN-.*123/i)).toBeVisible();
   await expect(page.getByRole('link', { name: /Download WAD/ })).toBeVisible();
+  const playHref = await page.getByRole('link', { name: /Play in UZDoom/ }).getAttribute('href');
+  expect(playHref).toContain('/play/?');
+  const playUrl = new URL(playHref!, 'http://localhost');
+  expect(playUrl.searchParams.get('iwad')).toBe('freedoom1.wad');
+  expect(playUrl.searchParams.get('modurl')).toBe('/api/jobs/job-123/download');
+  expect(playUrl.searchParams.get('warp')).toBe('1,1');
   expect(submitted).toEqual({
     game: 'doom1', port: 'zdoom', theme: 'tech', length: 'single', seed: 'e2e-seed',
     options: { float_size: '8', walls: 'metal', enabled: '0' },

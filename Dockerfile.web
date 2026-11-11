@@ -1,8 +1,12 @@
+FROM ghcr.io/abootnet/uzdoom-wasm:latest AS uzdoom-player
+
 FROM node:22-bookworm-slim AS frontend
 WORKDIR /web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
 COPY web/ ./
+COPY --from=uzdoom-player /srv/ /player/
+RUN node player/patch-uzdoom-loader.mjs /player/uzdoom-loader.js
 RUN npm run build
 
 FROM debian:trixie-slim AS obsidian-build
@@ -24,7 +28,9 @@ FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates && rm -rf /var/lib/apt/lists/* && mkdir -p /data /wads /config
 COPY --from=obsidian-build /opt/obsidian /opt/obsidian
 COPY --from=app-build /out/obsidian-web /usr/local/bin/obsidian-web
+COPY --from=frontend /player /opt/uzdoom-player
 ENV ADDR=:8080
+ENV UZDOOM_WEB_DIR=/opt/uzdoom-player
 VOLUME ["/data", "/wads", "/config"]
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/obsidian-web"]

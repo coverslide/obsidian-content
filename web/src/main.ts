@@ -150,7 +150,7 @@ class ObsidianApp extends CustomElement {
     const card = document.createElement('article');
     card.className = 'job';
     card.dataset.jobId = job.id;
-    card.innerHTML = `<div class="job-top"><span class="job-icon"></span><div class="job-info"><strong></strong><small></small></div><span class="status"></span></div><div class="progress"><i></i></div><a class="download">Download WAD <span>↓</span></a><p class="error"></p><button class="reuse-settings" type="button">Reuse settings</button><details class="job-logs"><summary></summary><pre></pre></details>`;
+    card.innerHTML = `<div class="job-top"><span class="job-icon"></span><div class="job-info"><strong></strong><small></small></div><span class="status"></span></div><div class="progress"><i></i></div><div class="job-actions"><a class="download">Download WAD <span>↓</span></a><a class="play-test" target="_blank" rel="noopener">Play in UZDoom <span>↗</span></a></div><p class="error"></p><button class="reuse-settings" type="button">Reuse settings</button><details class="job-logs"><summary></summary><pre></pre></details>`;
     const details = card.querySelector<HTMLDetailsElement>('.job-logs')!;
     details.open = job.status === 'running' || job.status === 'failed';
     return card;
@@ -167,6 +167,14 @@ class ObsidianApp extends CustomElement {
     const download = card.querySelector<HTMLAnchorElement>('.download')!;
     download.hidden = job.status !== 'completed' || !job.file;
     if (job.file) download.href = job.file;
+    const play = card.querySelector<HTMLAnchorElement>('.play-test')!;
+    const game = job.settings?.game;
+    const iwad = game === 'doom1' || game === 'ultdoom' ? 'freedoom1.wad' : game === 'doom2' ? 'freedoom2.wad' : undefined;
+    play.hidden = job.status !== 'completed' || !job.file || !iwad;
+    if (iwad) {
+      const params = new URLSearchParams({ iwad, modurl: `/api/jobs/${encodeURIComponent(job.id)}/download`, warp: iwad === 'freedoom1.wad' ? '1,1' : '1' });
+      play.href = `/play/?${params.toString()}`;
+    }
     const error = card.querySelector<HTMLElement>('.error')!;
     error.hidden = job.status !== 'failed';
     error.textContent = job.error || 'Build failed';

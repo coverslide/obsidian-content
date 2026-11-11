@@ -11,6 +11,7 @@ import (
 	"io"
 	"io/fs"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"os/exec"
@@ -99,10 +100,18 @@ func main() {
 	mux.HandleFunc("/api/jobs", s.jobs)
 	mux.HandleFunc("/api/options", s.optionReference)
 	mux.HandleFunc("/api/jobs/", s.job)
+	mime.AddExtensionType(".wasm", "application/wasm")
+	mime.AddExtensionType(".data", "application/octet-stream")
+	mux.Handle("/play/", http.StripPrefix("/play/", http.FileServer(http.Dir(env("UZDOOM_WEB_DIR", "/opt/uzdoom-player")))))
 	mux.Handle("/", http.FileServer(http.FS(staticFiles)))
 	addr := env("ADDR", ":8080")
 	log.Printf("obsidian-web listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, mux))
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Embedder-Policy", "require-corp")
+		mux.ServeHTTP(w, r)
+	})
+	log.Fatal(http.ListenAndServe(addr, handler))
 }
 func (s *Server) jobs(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
