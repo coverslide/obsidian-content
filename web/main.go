@@ -150,6 +150,11 @@ func (s *Server) jobs(w http.ResponseWriter, r *http.Request) {
 				if json.Unmarshal([]byte(raw), &settings) == nil {
 					j.Settings = &settings
 				}
+				if j.Status == "completed" {
+					if info, err := os.Stat(filepath.Join(s.output, j.ID+".wad")); err == nil && info.Mode().IsRegular() {
+						j.File = "/api/jobs/" + j.ID + "/download"
+					}
+				}
 				list = append(list, j)
 			}
 		}

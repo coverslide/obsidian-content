@@ -256,6 +256,9 @@ func TestJobsPaginationLimitsAndOffsets(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.WriteFile(filepath.Join(s.output, "middle.wad"), []byte("PWAD"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		query string
 		want  []string
@@ -279,6 +282,12 @@ func TestJobsPaginationLimitsAndOffsets(t *testing.T) {
 		for i, want := range tc.want {
 			if jobs[i].ID != want {
 				t.Errorf("GET %s job[%d]=%q, want %q", tc.query, i, jobs[i].ID, want)
+			}
+			if jobs[i].ID == "middle" && jobs[i].File != "/api/jobs/middle/download" {
+				t.Errorf("GET %s middle file=%q, want its download URL", tc.query, jobs[i].File)
+			}
+			if jobs[i].ID != "middle" && jobs[i].File != "" {
+				t.Errorf("GET %s %s unexpectedly has download URL %q without a WAD", tc.query, jobs[i].ID, jobs[i].File)
 			}
 		}
 	}
