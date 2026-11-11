@@ -10,6 +10,12 @@ From this directory:
 docker compose up --build
 ```
 
+To build the image directly from the repository root:
+
+```sh
+docker build -f Dockerfile.web -t coverslide/obsidian-runner .
+```
+
 Open <http://localhost:8080>. Compose creates persistent `obsidian-data` and `obsidian-wads` volumes. Put optional `CONFIG.txt` or `OPTIONS.txt` files in `web/config/` to apply them to generated maps. Set `OBSIDIAN_WEB_PORT` to change the host port.
 
 ## Run frontend and API locally
