@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -20,8 +21,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-//go:embed migrations/*.sql
-var migrationFiles embed.FS
+//go:embed migrations/*.sql embedded
+var assets embed.FS
 
 type Server struct {
 	db               *sql.DB
@@ -85,10 +86,14 @@ func main() {
 	}
 	go s.worker()
 	mux := http.NewServeMux()
+	staticFiles, err := fs.Sub(assets, "embedded")
+	if err != nil {
+		log.Fatal(err)
+	}
 	mux.HandleFunc("/api/jobs", s.jobs)
 	mux.HandleFunc("/api/options", s.optionReference)
 	mux.HandleFunc("/api/jobs/", s.job)
-	mux.Handle("/", http.FileServer(http.Dir(env("WEB_DIR", "/app/dist"))))
+	mux.Handle("/", http.FileServer(http.FS(staticFiles)))
 	addr := env("ADDR", ":8080")
 	log.Printf("obsidian-web listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
@@ -373,7 +378,7 @@ func env(k, d string) string {
 	return d
 }
 func migrate(db *sql.DB) error {
-	entries, err := migrationFiles.ReadDir("migrations")
+	entries, err := assets.ReadDir("migrations")
 	if err != nil {
 		return err
 	}
@@ -395,7 +400,7 @@ func migrate(db *sql.DB) error {
 		if applied > 0 {
 			continue
 		}
-		body, e := migrationFiles.ReadFile("migrations/" + entry.Name())
+		body, e := assets.ReadFile("migrations/" + entry.Name())
 		if e != nil {
 			return e
 		}

@@ -17,14 +17,14 @@ WORKDIR /src/web
 COPY web/go.mod ./
 RUN go mod download
 COPY web/ ./
+COPY --from=frontend /web/dist ./embedded/
 RUN CGO_ENABLED=1 go build -trimpath -o /out/obsidian-web .
 
 FROM debian:trixie-slim
-RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates && rm -rf /var/lib/apt/lists/* && groupadd -r obsidian && useradd -r -g obsidian -m -d /home/obsidian obsidian && mkdir -p /app/dist /data /wads /config && chown -R obsidian:obsidian /app /data /wads /config /home/obsidian
+RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates && rm -rf /var/lib/apt/lists/* && groupadd -r obsidian && useradd -r -g obsidian -m -d /home/obsidian obsidian && mkdir -p /data /wads /config && chown -R obsidian:obsidian /data /wads /config /home/obsidian
 COPY --from=obsidian-build /opt/obsidian /opt/obsidian
 COPY --from=app-build /out/obsidian-web /usr/local/bin/obsidian-web
-COPY --from=frontend /web/dist /app/dist
-ENV ADDR=:8080 DATABASE_PATH=/data/jobs.db WAD_DIR=/wads WEB_DIR=/app/dist OBSIDIAN_BIN=/opt/obsidian/obsidian OBSIDIAN_HOME=/opt/obsidian
+ENV ADDR=:8080
 VOLUME ["/data", "/wads", "/config"]
 EXPOSE 8080
 USER obsidian

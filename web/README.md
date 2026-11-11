@@ -1,6 +1,6 @@
 # Obsidian Web
 
-Browser interface for generating Obsidian maps. Go runs the job queue and persists job metadata and submitted settings in SQLite; Vite builds the TypeScript custom-element frontend using `@coverslide/customelement`. The service loads Obsidian's option reference from `--printref-json` and presents its settings in collapsible groups. Generated WAD files stay in a persistent volume and can be downloaded from the job list.
+Browser interface for generating Obsidian maps. Go runs the job queue and persists job metadata and submitted settings in SQLite; Vite builds the TypeScript custom-element frontend using `@coverslide/customelement`, which is embedded in the production Go executable. The service loads Obsidian's option reference from `--printref-json` and presents its settings in collapsible groups. Generated WAD files stay in a persistent volume and can be downloaded from the job list.
 
 ## Run with Docker Compose
 
@@ -19,7 +19,7 @@ npm install
 npm run dev
 ```
 
-Run the Go API with `go run .` from this directory after installing the module dependencies. The API defaults to `/opt/obsidian/obsidian`, `/data/jobs.db`, and `/wads`; configure `OBSIDIAN_BIN`, `DATABASE_PATH`, `WAD_DIR`, and `WEB_DIR` for a local setup.
+Run the Go API with `go run .` from this directory after installing the module dependencies. The API defaults to `/opt/obsidian/obsidian`, `/data/jobs.db`, and `/wads`. Docker Compose uses these defaults without path environment variables. The container embeds the Vite output in the Go executable.
 
 SQLite migrations are versioned SQL files under `migrations/` and are applied at service startup. New migrations should use the next numeric prefix and remain additive.
 
