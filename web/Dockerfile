@@ -5,11 +5,11 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM debian:bookworm-slim AS obsidian-build
+FROM debian:trixie-slim AS obsidian-build
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake ninja-build ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY . .
-RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCONSOLE_ONLY=ON -DCMAKE_INSTALL_PREFIX=/opt/obsidian && cmake --build build --parallel "$(nproc)" && cmake --install build --prefix /opt/obsidian
+RUN cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DOBSIDIAN_CONSOLE_ONLY=ON && cmake --build build --parallel "$(nproc)" && mkdir -p /opt/obsidian && cp build/obsidian /opt/obsidian/obsidian && cp -a addons data games language modules ports presets scripts theme /opt/obsidian/
 
 FROM golang:1.23-bookworm AS app-build
 RUN apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*
@@ -19,7 +19,7 @@ RUN go mod download
 COPY web/ ./
 RUN CGO_ENABLED=1 go build -trimpath -o /out/obsidian-web .
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates && rm -rf /var/lib/apt/lists/* && groupadd -r obsidian && useradd -r -g obsidian -m -d /home/obsidian obsidian && mkdir -p /app/dist /data /wads /config && chown -R obsidian:obsidian /app /data /wads /config /home/obsidian
 COPY --from=obsidian-build /opt/obsidian /opt/obsidian
 COPY --from=app-build /out/obsidian-web /usr/local/bin/obsidian-web

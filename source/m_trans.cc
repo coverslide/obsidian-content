@@ -36,6 +36,7 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 
 #include "lib_util.h"

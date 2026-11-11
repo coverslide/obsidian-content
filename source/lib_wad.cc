@@ -21,6 +21,7 @@
 
 #include "lib_wad.h"
 
+#include <cstring>
 #include <list>
 
 #include "lib_util.h"

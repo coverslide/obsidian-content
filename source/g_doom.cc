@@ -21,6 +21,7 @@
 
 #include "g_doom.h"
 
+#include <cstring>
 #include <locale.h>
 
 #include <bitset>

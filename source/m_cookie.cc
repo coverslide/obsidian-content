@@ -23,6 +23,7 @@
 
 #include <locale.h>
 
+#include <cstring>
 #include <format>
 #include <stdexcept>
 

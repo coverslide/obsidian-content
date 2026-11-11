@@ -1,6 +1,6 @@
 #include <stdlib.h>
 
-#include <chrono>
+#include <ctime>
 #include <iostream>
 #include <string>
 
@@ -18,36 +18,43 @@ std::string themeValue;
 std::string countValue;
 std::string versionValue;
 std::string result;
-std::chrono::time_point<std::chrono::local_t, std::chrono::seconds> currentTime;
+std::tm currentTime;
+
+void append_time_format(const char *format)
+{
+    char value[8]{};
+    if (std::strftime(value, sizeof(value), format, &currentTime) != 0)
+        result.append(value);
+}
 
 void year()
 {
-    result.append(std::format("{:%Y}", currentTime));
+    append_time_format("%Y");
 }
 
 void month()
 {
-    result.append(std::format("{:%m}", currentTime));
+    append_time_format("%m");
 }
 
 void day()
 {
-    result.append(std::format("{:%d}", currentTime));
+    append_time_format("%d");
 }
 
 void hour()
 {
-    result.append(std::format("{:%H}", currentTime));
+    append_time_format("%H");
 }
 
 void minute()
 {
-    result.append(std::format("{:%M}", currentTime));
+    append_time_format("%M");
 }
 
 void second()
 {
-    result.append(std::format("{:%S}", currentTime));
+    append_time_format("%S");
 }
 
 void game()
@@ -90,7 +97,12 @@ const char *ff_main(const char *levelcount, const char *game, const char *port, 
     versionValue      = version;
     std::string input = format;
     result.clear();
-    currentTime = std::chrono::floor<std::chrono::seconds>(std::chrono::current_zone()->to_local(std::chrono::system_clock::now()));
+    const std::time_t now = std::time(nullptr);
+#ifdef _WIN32
+    localtime_s(&currentTime, &now);
+#else
+    localtime_r(&now, &currentTime);
+#endif
     yy_buffer_state *buffer_state = yy_scan_bytes(input.c_str(), input.size());
     yy_switch_to_buffer(buffer_state);
     while (yylex() != TOK_EOF)

@@ -34,6 +34,8 @@
 
 #include "tx_forge.h"
 
+#include <cstring>
+
 #include "lib_util.h"
 #include "main.h"
 #include "sys_assert.h"

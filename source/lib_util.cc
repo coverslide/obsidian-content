@@ -36,6 +36,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 
 #include "main.h"
 #include "sys_assert.h"

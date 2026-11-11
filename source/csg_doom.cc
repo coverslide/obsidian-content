@@ -20,6 +20,7 @@
 //------------------------------------------------------------------------
 
 #include <algorithm>
+#include <cstring>
 #include <unordered_map>
 
 #include "csg_local.h"
