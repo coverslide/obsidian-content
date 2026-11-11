@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -391,6 +392,50 @@ func TestExtractWADFromObsidianZip(t *testing.T) {
 	got, err := os.ReadFile(target)
 	if err != nil || string(got) != "PWAD-generated" {
 		t.Fatalf("extracted WAD=%q err=%v", got, err)
+	}
+}
+
+func TestRecoverBundledWADMarksSuccessfulFailedRunComplete(t *testing.T) {
+	s := testServer(t, 1)
+	id := "recovery-1"
+	now := time.Now().UTC().Format(time.RFC3339)
+	if _, err := s.db.Exec(`INSERT INTO jobs(id,status,created_at,updated_at,error,request_json) VALUES(?,?,?,?,?,?)`, id, "failed", now, now, "missing WAD", validJobJSON()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(s.output, id+".log"), []byte("Obsidian\nSuccess\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	zipPath := filepath.Join(s.output, id+".zip")
+	file, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := zip.NewWriter(file)
+	entry, err := archive.Create("generated.wad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Write([]byte("PWAD-recovered")); err != nil {
+		t.Fatal(err)
+	}
+	if err = archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := recoverBundledWADs(s.db, s.output); err != nil {
+		t.Fatal(err)
+	}
+	var status string
+	if err := s.db.QueryRow(`SELECT status FROM jobs WHERE id=?`, id).Scan(&status); err != nil || status != "completed" {
+		t.Fatalf("recovered status=%q err=%v", status, err)
+	}
+	if _, err := os.Stat(filepath.Join(s.output, id+".wad")); err != nil {
+		t.Fatalf("recovered WAD missing: %v", err)
+	}
+	if _, err := os.Stat(zipPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("recovered ZIP still exists: err=%v", err)
 	}
 }
 

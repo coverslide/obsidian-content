@@ -67,6 +67,9 @@ func main() {
 	if err := os.MkdirAll(out, 0755); err != nil {
 		log.Fatal(err)
 	}
+	if err := recoverBundledWADs(db, out); err != nil {
+		log.Printf("recover completed WADs: %v", err)
+	}
 	s := &Server{db: db, output: out, obsidian: env("OBSIDIAN_BIN", "/opt/obsidian/obsidian"), queue: make(chan string, 100)}
 	s.options, err = s.readOptions()
 	if err != nil {
@@ -375,6 +378,47 @@ func extractWADFromZip(zipPath, target string) error {
 		return outputErr
 	}
 	return errors.New("ZIP contains no WAD file")
+}
+
+func recoverBundledWADs(db *sql.DB, output string) error {
+	rows, err := db.Query(`SELECT id FROM jobs WHERE status='failed'`)
+	if err != nil {
+		return err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		_ = rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if !strings.Contains(readLogTail(filepath.Join(output, id+".log"), 4096), "Success") {
+			continue
+		}
+		target := filepath.Join(output, id+".wad")
+		if _, err := os.Stat(target); err != nil {
+			zipPath := filepath.Join(output, id+".zip")
+			if err := extractWADFromZip(zipPath, target); err != nil {
+				continue
+			}
+			_ = os.Remove(zipPath)
+		}
+		now := time.Now().UTC().Format(time.RFC3339)
+		if _, err := db.Exec(`UPDATE jobs SET status='completed',error='',updated_at=? WHERE id=? AND status='failed'`, now, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func readLogTail(path string, maxBytes int64) string {
