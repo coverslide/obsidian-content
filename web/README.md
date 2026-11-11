@@ -1,6 +1,6 @@
 # Obsidian Web
 
-Browser interface for generating Obsidian maps. Go runs the job queue and persists job metadata and submitted settings in SQLite; Vite builds the TypeScript custom-element frontend using `@coverslide/customelement`, which is embedded in the production Go executable. The service loads Obsidian's option reference from `--printref-json` and presents its settings in collapsible groups. Generated WAD files stay in a persistent volume and can be downloaded from the job list.
+Browser interface for generating Obsidian maps. Go runs the job queue and persists job metadata and submitted settings in SQLite; Vite builds the TypeScript custom-element frontend using `@coverslide/customelement`, which is embedded in the production Go executable. The service loads Obsidian's option reference from `--printref-json` and presents its settings in collapsible groups. Running and failed jobs show a live tail of Obsidian's log, and each run can repopulate the settings form. The latest form settings are also saved in browser local storage. Generated WAD files stay in a persistent volume and can be downloaded from the job list.
 
 ## Run with Docker Compose
 

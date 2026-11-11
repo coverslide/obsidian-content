@@ -1,12 +1,14 @@
 package main
 
 import (
+	"archive/zip"
 	"context"
 	"database/sql"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"net/http"
@@ -39,12 +41,13 @@ type CreateJob struct {
 	Options map[string]string `json:"options"`
 }
 type Job struct {
-	ID        string `json:"id"`
-	Status    string `json:"status"`
-	CreatedAt string `json:"createdAt"`
-	UpdatedAt string `json:"updatedAt"`
-	Error     string `json:"error,omitempty"`
-	File      string `json:"file,omitempty"`
+	ID        string     `json:"id"`
+	Status    string     `json:"status"`
+	CreatedAt string     `json:"createdAt"`
+	UpdatedAt string     `json:"updatedAt"`
+	Error     string     `json:"error,omitempty"`
+	File      string     `json:"file,omitempty"`
+	Settings  *CreateJob `json:"settings,omitempty"`
 }
 
 func main() {
@@ -100,7 +103,27 @@ func main() {
 }
 func (s *Server) jobs(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		rows, e := s.db.Query(`SELECT id,status,created_at,updated_at,error FROM jobs ORDER BY created_at DESC LIMIT 100`)
+		limit, offset := 100, 0
+		if value := r.URL.Query().Get("limit"); value != "" {
+			parsed, err := strconv.Atoi(value)
+			if err != nil || parsed < 1 {
+				http.Error(w, "invalid limit", http.StatusBadRequest)
+				return
+			}
+			limit = parsed
+		}
+		if limit > 101 {
+			limit = 101
+		}
+		if value := r.URL.Query().Get("offset"); value != "" {
+			parsed, err := strconv.Atoi(value)
+			if err != nil || parsed < 0 || parsed > 1000000 {
+				http.Error(w, "invalid offset", http.StatusBadRequest)
+				return
+			}
+			offset = parsed
+		}
+		rows, e := s.db.Query(`SELECT id,status,created_at,updated_at,error,request_json FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?`, limit, offset)
 		if e != nil {
 			http.Error(w, e.Error(), 500)
 			return
@@ -109,7 +132,12 @@ func (s *Server) jobs(w http.ResponseWriter, r *http.Request) {
 		list := []Job{}
 		for rows.Next() {
 			var j Job
-			if rows.Scan(&j.ID, &j.Status, &j.CreatedAt, &j.UpdatedAt, &j.Error) == nil {
+			var raw string
+			if rows.Scan(&j.ID, &j.Status, &j.CreatedAt, &j.UpdatedAt, &j.Error, &raw) == nil {
+				var settings CreateJob
+				if json.Unmarshal([]byte(raw), &settings) == nil {
+					j.Settings = &settings
+				}
 				list = append(list, j)
 			}
 		}
@@ -182,7 +210,8 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 	}
 	id := parts[0]
 	var j Job
-	e := s.db.QueryRow(`SELECT id,status,created_at,updated_at,error FROM jobs WHERE id=?`, id).Scan(&j.ID, &j.Status, &j.CreatedAt, &j.UpdatedAt, &j.Error)
+	var raw string
+	e := s.db.QueryRow(`SELECT id,status,created_at,updated_at,error,request_json FROM jobs WHERE id=?`, id).Scan(&j.ID, &j.Status, &j.CreatedAt, &j.UpdatedAt, &j.Error, &raw)
 	if errors.Is(e, sql.ErrNoRows) {
 		http.NotFound(w, r)
 		return
@@ -190,6 +219,10 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 	if e != nil {
 		http.Error(w, "database error", 500)
 		return
+	}
+	var settings CreateJob
+	if json.Unmarshal([]byte(raw), &settings) == nil {
+		j.Settings = &settings
 	}
 	if len(parts) == 2 && parts[1] == "download" {
 		if j.Status != "completed" {
@@ -200,6 +233,35 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/octet-stream")
 		w.Header().Set("Content-Disposition", `attachment; filename="obsidian-`+id+`.wad"`)
 		http.ServeFile(w, r, filepath.Join(s.output, name))
+		return
+	}
+	if len(parts) == 2 && parts[1] == "logs" {
+		f, err := os.Open(filepath.Join(s.output, id+".log"))
+		if errors.Is(err, os.ErrNotExist) {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-store")
+			return
+		}
+		if err != nil {
+			http.Error(w, "could not read job log", http.StatusInternalServerError)
+			return
+		}
+		defer f.Close()
+		info, err := f.Stat()
+		if err != nil {
+			http.Error(w, "could not read job log", http.StatusInternalServerError)
+			return
+		}
+		const maxLogBytes = 64 * 1024
+		if info.Size() > maxLogBytes {
+			if _, err = f.Seek(info.Size()-maxLogBytes, io.SeekStart); err != nil {
+				http.Error(w, "could not read job log", http.StatusInternalServerError)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-store")
+		_, _ = io.Copy(w, f)
 		return
 	}
 	if len(parts) != 1 {
@@ -221,7 +283,15 @@ func (s *Server) worker() {
 		_ = s.db.QueryRow(`SELECT request_json FROM jobs WHERE id=?`, id).Scan(&raw)
 		var in CreateJob
 		_ = json.Unmarshal([]byte(raw), &in)
-		args := []string{"--home", env("OBSIDIAN_HOME_DIR", "/home/obsidian"), "--log", filepath.Join(s.output, id+".log"), "--batch", target, "game=" + in.Game, "port=" + in.Port, "theme=" + in.Theme, "length=" + in.Length}
+		logPath := filepath.Join(s.output, id+".log")
+		logFile, logErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+		if logErr != nil {
+			cancel()
+			now = time.Now().UTC().Format(time.RFC3339)
+			_, _ = s.db.Exec(`UPDATE jobs SET status='failed',error=?,updated_at=? WHERE id=?`, "Could not create job log: "+logErr.Error(), now, id)
+			continue
+		}
+		args := []string{"--home", env("OBSIDIAN_HOME_DIR", "/home/obsidian"), "--verbose", "--batch", target, "game=" + in.Game, "port=" + in.Port, "theme=" + in.Theme, "length=" + in.Length}
 		keys := make([]string, 0, len(in.Options))
 		for key := range in.Options {
 			keys = append(keys, key)
@@ -241,17 +311,26 @@ func (s *Server) worker() {
 		}
 		cmd := exec.CommandContext(ctx, s.obsidian, args...)
 		cmd.Dir = env("OBSIDIAN_HOME", "/opt/obsidian")
-		out, e := cmd.CombinedOutput()
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+		e := cmd.Run()
 		cancel()
+		_ = logFile.Sync()
+		_ = logFile.Close()
 		status, msg := "completed", ""
 		if e == nil {
 			if _, statErr := os.Stat(target); statErr != nil {
-				e = fmt.Errorf("Obsidian completed without creating the WAD: %w", statErr)
+				zipPath := strings.TrimSuffix(target, filepath.Ext(target)) + ".zip"
+				if extractErr := extractWADFromZip(zipPath, target); extractErr != nil {
+					e = fmt.Errorf("Obsidian completed without creating the WAD: %w (ZIP extraction: %v)", statErr, extractErr)
+				} else {
+					_ = os.Remove(zipPath)
+				}
 			}
 		}
 		if e != nil {
 			status = "failed"
-			msg = string(out)
+			msg = readLogTail(logPath, 4000)
 			if len(msg) > 4000 {
 				msg = msg[len(msg)-4000:]
 			}
@@ -263,6 +342,61 @@ func (s *Server) worker() {
 		now = time.Now().UTC().Format(time.RFC3339)
 		_, _ = s.db.Exec(`UPDATE jobs SET status=?,error=?,updated_at=? WHERE id=?`, status, msg, now, id)
 	}
+}
+
+func extractWADFromZip(zipPath, target string) error {
+	archive, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return err
+	}
+	defer archive.Close()
+	for _, file := range archive.File {
+		if file.FileInfo().IsDir() || !strings.EqualFold(filepath.Ext(file.Name), ".wad") {
+			continue
+		}
+		input, err := file.Open()
+		if err != nil {
+			return err
+		}
+		output, err := os.OpenFile(target, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			_ = input.Close()
+			return err
+		}
+		_, copyErr := io.Copy(output, input)
+		inputErr := input.Close()
+		outputErr := output.Close()
+		if copyErr != nil {
+			return copyErr
+		}
+		if inputErr != nil {
+			return inputErr
+		}
+		return outputErr
+	}
+	return errors.New("ZIP contains no WAD file")
+}
+
+func readLogTail(path string, maxBytes int64) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return ""
+	}
+	if info.Size() > maxBytes {
+		if _, err = f.Seek(info.Size()-maxBytes, io.SeekStart); err != nil {
+			return ""
+		}
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		return ""
+	}
+	return string(data)
 }
 func (s *Server) optionReference(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {

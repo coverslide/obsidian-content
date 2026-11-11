@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"database/sql"
 	"encoding/json"
 	"net/http"
@@ -38,6 +39,7 @@ if [ "$1" = "--printref-json" ]; then
   exit 0
 fi
 if [ -n "$OBSIDIAN_HELPER_RECORD" ]; then printf '%s\n' "$@" > "$OBSIDIAN_HELPER_RECORD"; fi
+echo 'simulated generator output'
 if [ "$OBSIDIAN_HELPER_MODE" = "fail" ]; then echo 'simulated generator failure' >&2; exit 7; fi
 if [ "$OBSIDIAN_HELPER_MODE" != "no-output" ]; then
   previous=""
@@ -166,6 +168,11 @@ func TestCreateJobPersistsRequestAndQueuesID(t *testing.T) {
 	if saved.Options["float_size"] != "8" || saved.Seed != "abc" || saved.Port != "boom" {
 		t.Fatalf("request not persisted: %+v", saved)
 	}
+	w = httptest.NewRecorder()
+	s.jobs(w, httptest.NewRequest(http.MethodGet, "/api/jobs", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"settings":{"game":"doom2"`) || !strings.Contains(w.Body.String(), `"float_size":"8"`) {
+		t.Fatalf("job list missing reusable settings: status=%d body=%s", w.Code, w.Body)
+	}
 }
 
 func TestCreateJobRejectsMalformedOrInvalidRequests(t *testing.T) {
@@ -240,6 +247,49 @@ func TestJobsAndOptionsHandlers(t *testing.T) {
 	}
 }
 
+func TestJobsPaginationLimitsAndOffsets(t *testing.T) {
+	s := testServer(t, 4)
+	for i, id := range []string{"oldest", "middle", "newest"} {
+		created := time.Date(2026, 1, 1, 0, i, 0, 0, time.UTC).Format(time.RFC3339)
+		if _, err := s.db.Exec(`INSERT INTO jobs(id,status,created_at,updated_at,request_json) VALUES(?,?,?,?,?)`, id, "completed", created, created, validJobJSON()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		query string
+		want  []string
+	}{
+		{"?limit=2", []string{"newest", "middle"}},
+		{"?limit=2&offset=1", []string{"middle", "oldest"}},
+		{"?limit=500", []string{"newest", "middle", "oldest"}},
+	} {
+		w := httptest.NewRecorder()
+		s.jobs(w, httptest.NewRequest(http.MethodGet, "/api/jobs"+tc.query, nil))
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET %s: status=%d body=%s", tc.query, w.Code, w.Body)
+		}
+		var jobs []Job
+		if err := json.Unmarshal(w.Body.Bytes(), &jobs); err != nil {
+			t.Fatal(err)
+		}
+		if len(jobs) != len(tc.want) {
+			t.Fatalf("GET %s: got %d jobs, want %d", tc.query, len(jobs), len(tc.want))
+		}
+		for i, want := range tc.want {
+			if jobs[i].ID != want {
+				t.Errorf("GET %s job[%d]=%q, want %q", tc.query, i, jobs[i].ID, want)
+			}
+		}
+	}
+	for _, query := range []string{"?limit=0", "?limit=nope", "?offset=-1", "?offset=1000001"} {
+		w := httptest.NewRecorder()
+		s.jobs(w, httptest.NewRequest(http.MethodGet, "/api/jobs"+query, nil))
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("GET %s: status=%d, want 400", query, w.Code)
+		}
+	}
+}
+
 func TestReadOptionsParsesObsidianReference(t *testing.T) {
 	s := testServer(t, 1)
 	t.Setenv("OBSIDIAN_HOME", t.TempDir())
@@ -264,6 +314,15 @@ func TestJobStatusAndDownload(t *testing.T) {
 	s.job(w, httptest.NewRequest(http.MethodGet, "/api/jobs/"+id, nil))
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"status":"queued"`) {
 		t.Fatalf("queued status: %d %s", w.Code, w.Body)
+	}
+	logText := "starting generator\nplacing rooms\n"
+	if err := os.WriteFile(filepath.Join(s.output, id+".log"), []byte(logText), 0600); err != nil {
+		t.Fatal(err)
+	}
+	w = httptest.NewRecorder()
+	s.job(w, httptest.NewRequest(http.MethodGet, "/api/jobs/"+id+"/logs", nil))
+	if w.Code != http.StatusOK || w.Body.String() != logText || !strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
+		t.Fatalf("job logs: status=%d type=%q body=%q", w.Code, w.Header().Get("Content-Type"), w.Body.String())
 	}
 	w = httptest.NewRecorder()
 	s.job(w, httptest.NewRequest(http.MethodGet, "/api/jobs/missing", nil))
@@ -301,6 +360,40 @@ func TestJobStatusAndDownload(t *testing.T) {
 	}
 }
 
+func TestExtractWADFromObsidianZip(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "bundle.zip")
+	file, err := os.Create(zipPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	archive := zip.NewWriter(file)
+	if _, err = archive.Create("README.txt"); err != nil {
+		t.Fatal(err)
+	}
+	entry, err := archive.Create("nested/level.wad")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = entry.Write([]byte("PWAD-generated")); err != nil {
+		t.Fatal(err)
+	}
+	if err = archive.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(dir, "direct-download.wad")
+	if err = extractWADFromZip(zipPath, target); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(target)
+	if err != nil || string(got) != "PWAD-generated" {
+		t.Fatalf("extracted WAD=%q err=%v", got, err)
+	}
+}
+
 func TestWorkerGeneratesAndRecordsWAD(t *testing.T) {
 	s := testServer(t, 1)
 	home := t.TempDir()
@@ -334,6 +427,10 @@ func TestWorkerGeneratesAndRecordsWAD(t *testing.T) {
 	wad, err := os.ReadFile(filepath.Join(s.output, id+".wad"))
 	if err != nil || string(wad) != "IWAD-TEST" {
 		t.Fatalf("wad=%q err=%v", wad, err)
+	}
+	logOutput, err := os.ReadFile(filepath.Join(s.output, id+".log"))
+	if err != nil || !strings.Contains(string(logOutput), "simulated generator output") {
+		t.Fatalf("job log=%q err=%v", logOutput, err)
 	}
 	argsBytes, err := os.ReadFile(record)
 	if err != nil {
