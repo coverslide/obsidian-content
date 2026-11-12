@@ -6,6 +6,9 @@ import './log-tail.css';
 type JobSettings = { game:string; port:string; theme:string; length:string; seed:string; options:Record<string,string> };
 type Job = { id:string; status:string; createdAt:string; error?:string; file?:string; settings?:JobSettings };
 const lastSettingsKey = 'obsidian-web:last-settings:v1';
+const globalOptionsKey = 'obsidian-web:global-options:v1';
+type GlobalOptions = { touchControls:'auto'|'on'|'off'; size:number; opacity:number };
+const defaultGlobalOptions:GlobalOptions = { touchControls:'auto', size:1, opacity:0.58 };
 const recentLimit = 5;
 const historyPageSize = 20;
 const previewIWADs:Record<string,string> = {
@@ -60,18 +63,58 @@ class ObsidianApp extends CustomElement {
   private renderRoute() {
     if (this.runId()) this.renderRunDetail();
     else if (this.isHistory()) this.renderHistory();
+    else if (location.hash === '#/options') this.renderOptions();
     else if (location.hash === '#/launch' || location.hash.startsWith('#/launch?')) this.renderLauncher();
     else this.renderHome();
     void this.refresh();
   }
 
   private renderRunDetail() {
-    this.innerHTML = `<main class="shell history-shell run-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><a class="online" href="#/runs">← ALL RUNS</a></nav></header><section class="history-intro"><p class="eyebrow">RUN DETAILS</p><h2>Generated run</h2><p class="lede">Status, output, settings, and generated files for this run.</p></section><section class="history-panel"><div class="section-title"><span>RUN</span><h3>Run details</h3></div><div id="run-detail"><div class="empty"><p>Loading run…</p></div></div></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/runs">BACK TO RUNS</a></footer></main>`;
+    this.innerHTML = `<main class="shell history-shell run-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><a class="online" href="#/options">OPTIONS</a><a class="online" href="#/runs">← ALL RUNS</a></nav></header><section class="history-intro"><p class="eyebrow">RUN DETAILS</p><h2>Generated run</h2><p class="lede">Status, output, settings, and generated files for this run.</p></section><section class="history-panel"><div class="section-title"><span>RUN</span><h3>Run details</h3></div><div id="run-detail"><div class="empty"><p>Loading run…</p></div></div></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/runs">BACK TO RUNS</a></footer></main>`;
+  }
+
+  private readGlobalOptions():GlobalOptions {
+    try {
+      const saved = JSON.parse(localStorage.getItem(globalOptionsKey) || 'null');
+      return {
+        touchControls: ['auto', 'on', 'off'].includes(saved?.touchControls) ? saved.touchControls : defaultGlobalOptions.touchControls,
+        size: Number.isFinite(saved?.size) ? Math.min(1.35, Math.max(0.75, saved.size)) : defaultGlobalOptions.size,
+        opacity: Number.isFinite(saved?.opacity) ? Math.min(0.9, Math.max(0.25, saved.opacity)) : defaultGlobalOptions.opacity,
+      };
+    } catch { return { ...defaultGlobalOptions }; }
+  }
+
+  private renderOptions() {
+    const options = this.readGlobalOptions();
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const controlsActive = options.touchControls === 'on' || (options.touchControls === 'auto' && coarsePointer);
+    this.innerHTML = `<main class="shell history-shell options-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><a class="online" href="#/runs">RUN HISTORY</a><a class="online" href="#/">BUILDER</a></nav></header><section class="history-intro"><p class="eyebrow">GLOBAL PREFERENCES</p><h2>Options</h2><p class="lede">These settings are saved in this browser and used by the bundled game player.</p></section><section class="history-panel global-options-panel"><div class="section-title"><span>01</span><h3>Player controls</h3></div><label for="touch-controls-mode">TOUCH CONTROLS</label><select id="touch-controls-mode"><option value="auto" ${options.touchControls === 'auto' ? 'selected' : ''}>Automatic — detect coarse pointer</option><option value="on" ${options.touchControls === 'on' ? 'selected' : ''}>Always on</option><option value="off" ${options.touchControls === 'off' ? 'selected' : ''}>Always off</option></select><p class="form-note option-status" id="touch-controls-status">${options.touchControls === 'auto' ? `Automatic mode: controls are ${controlsActive ? 'enabled' : 'disabled'} for this device (${coarsePointer ? 'coarse pointer detected' : 'no coarse pointer detected'}).` : `Touch controls are forced ${options.touchControls === 'on' ? 'on' : 'off'} for this browser.`}</p><label for="touch-control-size">STICK SIZE <output id="touch-size-value">${options.size.toFixed(2)}</output><input id="touch-control-size" type="range" min="0.75" max="1.35" step="0.05" value="${options.size}"></label><label for="touch-control-opacity">CONTROL OPACITY <output id="touch-opacity-value">${options.opacity.toFixed(2)}</output><input id="touch-control-opacity" type="range" min="0.25" max="0.9" step="0.01" value="${options.opacity}"></label><p class="form-note option-saved" id="options-saved" aria-live="polite">Saved automatically on this device.</p></section><footer><span>OBSIDIAN · BROWSER OPTIONS</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
+    const mode = this.querySelector<HTMLSelectElement>('#touch-controls-mode')!;
+    const size = this.querySelector<HTMLInputElement>('#touch-control-size')!;
+    const opacity = this.querySelector<HTMLInputElement>('#touch-control-opacity')!;
+    const save = () => {
+      const value:GlobalOptions = { touchControls:mode.value as GlobalOptions['touchControls'], size:Number(size.value), opacity:Number(opacity.value) };
+      try {
+        localStorage.setItem(globalOptionsKey, JSON.stringify(value));
+        this.querySelector<HTMLElement>('#options-saved')!.textContent = 'Saved automatically on this device.';
+      } catch {
+        this.querySelector<HTMLElement>('#options-saved')!.textContent = 'Could not save preferences in this browser.';
+      }
+      this.querySelector<HTMLOutputElement>('#touch-size-value')!.value = value.size.toFixed(2);
+      this.querySelector<HTMLOutputElement>('#touch-opacity-value')!.value = value.opacity.toFixed(2);
+      const active = value.touchControls === 'on' || (value.touchControls === 'auto' && window.matchMedia('(pointer: coarse)').matches);
+      this.querySelector<HTMLElement>('#touch-controls-status')!.textContent = value.touchControls === 'auto'
+        ? `Automatic mode: controls are ${active ? 'enabled' : 'disabled'} for this device (${window.matchMedia('(pointer: coarse)').matches ? 'coarse pointer detected' : 'no coarse pointer detected'}).`
+        : `Touch controls are forced ${value.touchControls === 'on' ? 'on' : 'off'} for this browser.`;
+    };
+    mode.addEventListener('change', save);
+    size.addEventListener('input', save);
+    opacity.addEventListener('input', save);
   }
 
   private renderLauncher() {
     const selected = new URLSearchParams(location.hash.split('?')[1] ?? '').get('iwad') ?? 'doom2.wad';
-    this.innerHTML = `<main class="shell history-shell launcher-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/">← BUILDER</a><a class="online" href="#/runs">RUN HISTORY</a></nav></header><section class="history-intro"><p class="eyebrow">UZDOOM PLAYER</p><h2>Launch a game</h2><p class="lede">Choose an IWAD mounted on this server and open the self-hosted UZDoom player.</p></section><section class="history-panel launch-panel"><div class="section-title"><span>01</span><h3>Game data</h3></div><label for="launch-iwad">SELECT GAME DATA</label><select id="launch-iwad">${availableIWADs.map(([file,label]) => `<option value="${file}" ${file === selected ? 'selected' : ''}>${label} · ${file}</option>`).join('')}</select><p class="form-note launch-note">Harmony uses harm1.wad. Hexen: Deathkings loads hexdd.wad with hexen.wad. The WAD files stay on the server; they are not embedded in the app image.</p><a class="build launch-button" id="launch-game" href="${launchHref(selected)}" target="_blank" rel="noopener"><span>Launch UZDoom</span><span>↗</span></a></section><footer><span>SELF-HOSTED UZDOOM · LOCAL IWAD STORAGE</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
+    this.innerHTML = `<main class="shell history-shell launcher-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/">← BUILDER</a><a class="online" href="#/options">OPTIONS</a><a class="online" href="#/runs">RUN HISTORY</a></nav></header><section class="history-intro"><p class="eyebrow">UZDOOM PLAYER</p><h2>Launch a game</h2><p class="lede">Choose an IWAD mounted on this server and open the self-hosted UZDoom player.</p></section><section class="history-panel launch-panel"><div class="section-title"><span>01</span><h3>Game data</h3></div><label for="launch-iwad">SELECT GAME DATA</label><select id="launch-iwad">${availableIWADs.map(([file,label]) => `<option value="${file}" ${file === selected ? 'selected' : ''}>${label} · ${file}</option>`).join('')}</select><p class="form-note launch-note">Harmony uses harm1.wad. Hexen: Deathkings loads hexdd.wad with hexen.wad. The WAD files stay on the server; they are not embedded in the app image.</p><a class="build launch-button" id="launch-game" href="${launchHref(selected)}" target="_blank" rel="noopener"><span>Launch UZDoom</span><span>↗</span></a></section><footer><span>SELF-HOSTED UZDOOM · LOCAL IWAD STORAGE</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
     const select = this.querySelector<HTMLSelectElement>('#launch-iwad')!;
     const link = this.querySelector<HTMLAnchorElement>('#launch-game')!;
     select.addEventListener('change', () => {
@@ -81,7 +124,7 @@ class ObsidianApp extends CustomElement {
   }
 
   private renderHome() {
-    this.innerHTML = `<main class="shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><span class="online"><i></i> GENERATOR READY</span></nav></header><section class="intro"><p class="eyebrow">PROCEDURAL WORLD BUILDER</p><h2>Build a world.<br><em>Make it yours.</em></h2><p class="lede">Choose from Obsidian's complete option reference and forge a playable WAD.</p></section><section class="workspace"><form id="build-form"><div class="section-title"><span>01</span><h3>Build settings</h3></div><label>SEED <span class="optional">OPTIONAL</span><input name="seed" maxlength="80" placeholder="Random seed" autocomplete="off"></label><div id="option-groups"><p class="loading-options">Loading all available Obsidian settings…</p></div><button class="build" type="submit"><span>Generate WAD</span><span>↗</span></button><p class="form-note">Your latest settings save on this device and with each run.</p></form><aside><div class="section-title"><span>02</span><h3>Recent runs</h3><a class="live" href="#/runs">VIEW ALL RUNS →</a></div><div id="jobs" class="jobs"><div class="empty"><span>✳</span><p>No runs yet</p><small>Your generated worlds will appear here.</small></div></div><div class="queue-footer"><span class="pulse"></span> AUTO-REFRESHING</div></aside></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><span>WAD OUTPUT · DOOM ENGINE</span></footer></main>`;
+    this.innerHTML = `<main class="shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><a class="online" href="#/options">OPTIONS</a><span class="online"><i></i> GENERATOR READY</span></nav></header><section class="intro"><p class="eyebrow">PROCEDURAL WORLD BUILDER</p><h2>Build a world.<br><em>Make it yours.</em></h2><p class="lede">Choose from Obsidian's complete option reference and forge a playable WAD.</p></section><section class="workspace"><form id="build-form"><div class="section-title"><span>01</span><h3>Build settings</h3></div><label>SEED <span class="optional">OPTIONAL</span><input name="seed" maxlength="80" placeholder="Random seed" autocomplete="off"></label><div id="option-groups"><p class="loading-options">Loading all available Obsidian settings…</p></div><button class="build" type="submit"><span>Generate WAD</span><span>↗</span></button><p class="form-note">Your latest settings save on this device and with each run.</p></form><aside><div class="section-title"><span>02</span><h3>Recent runs</h3><a class="live" href="#/runs">VIEW ALL RUNS →</a></div><div id="jobs" class="jobs"><div class="empty"><span>✳</span><p>No runs yet</p><small>Your generated worlds will appear here.</small></div></div><div class="queue-footer"><span class="pulse"></span> AUTO-REFRESHING</div></aside></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><span>WAD OUTPUT · DOOM ENGINE</span></footer></main>`;
     const form = this.querySelector<HTMLFormElement>('#build-form')!;
     form.addEventListener('submit', event => void this.submit(event as SubmitEvent));
     form.addEventListener('input', () => this.saveSettings(form));
@@ -92,7 +135,7 @@ class ObsidianApp extends CustomElement {
   private renderHistory() {
     const query = new URLSearchParams(location.hash.split('?')[1] ?? '');
     this.page = Math.max(1, Number(query.get('page')) || 1);
-    this.innerHTML = `<main class="shell history-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><a class="online" href="#/">← NEW RUN</a></nav></header><section class="history-intro"><p class="eyebrow">RUN ARCHIVE</p><h2>Past runs</h2><p class="lede">Browse generated worlds and reuse any run's settings.</p></section><section class="history-panel"><div class="section-title"><span>02</span><h3>All runs</h3><span class="live">PAGE ${this.page}</span></div><div id="jobs" class="jobs"><div class="empty"><span>✳</span><p>Loading runs…</p></div></div><nav class="pagination" aria-label="Run history pages"><button type="button" data-page="previous" ${this.page <= 1 ? 'disabled' : ''}>← Previous</button><span>Page ${this.page}</span><button type="button" data-page="next">Next →</button></nav></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
+    this.innerHTML = `<main class="shell history-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><a class="online" href="#/options">OPTIONS</a><a class="online" href="#/">← NEW RUN</a></nav></header><section class="history-intro"><p class="eyebrow">RUN ARCHIVE</p><h2>Past runs</h2><p class="lede">Browse generated worlds and reuse any run's settings.</p></section><section class="history-panel"><div class="section-title"><span>02</span><h3>All runs</h3><span class="live">PAGE ${this.page}</span></div><div id="jobs" class="jobs"><div class="empty"><span>✳</span><p>Loading runs…</p></div></div><nav class="pagination" aria-label="Run history pages"><button type="button" data-page="previous" ${this.page <= 1 ? 'disabled' : ''}>← Previous</button><span>Page ${this.page}</span><button type="button" data-page="next">Next →</button></nav></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
     this.querySelector<HTMLButtonElement>('[data-page="previous"]')?.addEventListener('click', () => this.goToPage(this.page - 1));
     this.querySelector<HTMLButtonElement>('[data-page="next"]')?.addEventListener('click', () => this.goToPage(this.page + 1));
   }

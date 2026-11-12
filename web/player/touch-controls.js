@@ -2,20 +2,38 @@
 (function (root) {
   'use strict';
 
-  const SETTINGS_KEY = 'obsidian-web:player-preview:v1';
+  const SETTINGS_KEY = 'obsidian-web:global-options:v1';
+  const LEGACY_SETTINGS_KEY = 'obsidian-web:player-preview:v1';
   const DEFAULTS = { size: 1, opacity: 0.58 };
 
-  function supportsTouch(windowRef) {
-    return Boolean(windowRef.navigator.maxTouchPoints > 0 ||
-      windowRef.matchMedia?.('(pointer: coarse)').matches);
+  function hasCoarsePointer(windowRef) {
+    return Boolean(windowRef.matchMedia?.('(pointer: coarse)').matches);
+  }
+
+  function readOptions(windowRef) {
+    try {
+      return JSON.parse(windowRef.localStorage.getItem(SETTINGS_KEY) || 'null') || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function controlsEnabled(windowRef) {
+    const mode = readOptions(windowRef).touchControls;
+    if (mode === 'on') return true;
+    if (mode === 'off') return false;
+    return hasCoarsePointer(windowRef);
   }
 
   function readSettings(windowRef) {
     try {
-      const saved = JSON.parse(windowRef.localStorage.getItem(SETTINGS_KEY) || 'null');
+      const saved = readOptions(windowRef);
+      const legacy = JSON.parse(windowRef.localStorage.getItem(LEGACY_SETTINGS_KEY) || 'null') || {};
       return {
-        size: Number.isFinite(saved?.size) ? Math.min(1.35, Math.max(0.75, saved.size)) : DEFAULTS.size,
-        opacity: Number.isFinite(saved?.opacity) ? Math.min(0.9, Math.max(0.25, saved.opacity)) : DEFAULTS.opacity,
+        size: Number.isFinite(saved.size) ? Math.min(1.35, Math.max(0.75, saved.size))
+          : Number.isFinite(legacy.size) ? Math.min(1.35, Math.max(0.75, legacy.size)) : DEFAULTS.size,
+        opacity: Number.isFinite(saved.opacity) ? Math.min(0.9, Math.max(0.25, saved.opacity))
+          : Number.isFinite(legacy.opacity) ? Math.min(0.9, Math.max(0.25, legacy.opacity)) : DEFAULTS.opacity,
       };
     } catch (_) {
       return { ...DEFAULTS };
@@ -23,16 +41,18 @@
   }
 
   function install({ windowRef = root.window, documentRef = root.document, canvas } = {}) {
-    if (!windowRef || !documentRef || !supportsTouch(windowRef) || !canvas) return null;
+    if (!windowRef || !documentRef || !controlsEnabled(windowRef) || !canvas) return null;
 
     const settings = readSettings(windowRef);
+    const iwad = new URLSearchParams(windowRef.location?.search || '').get('iwad');
+    const hasInventory = iwad === 'heretic.wad' || iwad === 'hexen.wad';
     const heldKeys = new Set();
     const element = documentRef.createElement('div');
     element.className = 'obsidian-touch-controls';
     element.setAttribute('aria-label', 'Touch game controls');
     element.innerHTML = `
-      <button class="touch-settings-toggle" type="button" aria-label="Preview control settings" aria-expanded="false">⚙</button>
-      <section class="touch-settings" hidden aria-label="Preview control settings">
+      <button class="touch-settings-toggle" type="button" aria-label="Touch control settings" aria-expanded="false">⚙</button>
+      <section class="touch-settings" hidden aria-label="Touch control settings">
         <label>Stick size <input data-setting="size" type="range" min="0.75" max="1.35" step="0.05"></label>
         <label>Control opacity <input data-setting="opacity" type="range" min="0.25" max="0.9" step="0.05"></label>
       </section>
@@ -42,6 +62,11 @@
         <button type="button" data-key="ControlLeft" aria-label="Fire">FIRE</button>
         <button type="button" data-key="Space" aria-label="Use">USE</button>
         <button type="button" data-key="ShiftLeft" aria-label="Run">RUN</button>
+      </div>
+      <div class="touch-inventory" role="group" ${hasInventory ? '' : 'hidden'} aria-label="Inventory controls">
+        <button type="button" data-key="BracketLeft" aria-label="Previous inventory item">ITEM ◀</button>
+        <button type="button" data-key="Enter" aria-label="Use inventory item">USE ITEM</button>
+        <button type="button" data-key="BracketRight" aria-label="Next inventory item">ITEM ▶</button>
       </div>`;
     const style = documentRef.createElement('style');
     style.textContent = `
@@ -53,12 +78,14 @@
       .touch-stick:before{content:'';position:absolute;width:38%;height:38%;border:1px solid #ffffff4f;border-radius:50%}
       .touch-thumb{position:absolute;width:42%;height:42%;border-radius:50%;background:#d7e4c6b8;border:1px solid #fff9;box-shadow:0 2px 6px #0008;transform:translate(0,0)}
       .touch-actions{position:absolute;right:max(24px,env(safe-area-inset-right));bottom:calc(max(22px,env(safe-area-inset-bottom)) + 152px * var(--touch-scale));display:flex;gap:9px;pointer-events:auto}
+      .touch-inventory{position:absolute;right:max(24px,env(safe-area-inset-right));bottom:calc(max(22px,env(safe-area-inset-bottom)) + 216px * var(--touch-scale));display:flex;gap:6px;pointer-events:auto}
       .touch-actions button,.touch-settings-toggle{border:1px solid #ffffff8c;background:rgba(15,20,25,var(--touch-opacity));color:#fff;border-radius:999px;touch-action:none;pointer-events:auto;box-shadow:0 2px 8px #0008;font:700 10px system-ui,sans-serif}
       .touch-actions button{width:54px;height:54px}.touch-actions button:first-child{width:62px;height:62px;margin-top:-13px;background:rgba(116,47,36,var(--touch-opacity))}
+      .touch-inventory button{min-width:48px;height:38px;padding:0 9px;border:1px solid #ffffff8c;border-radius:20px;background:rgba(15,20,25,var(--touch-opacity));color:#fff;touch-action:none;pointer-events:auto;box-shadow:0 2px 8px #0008;font:700 9px system-ui,sans-serif}
       .touch-settings-toggle{position:absolute;right:max(18px,env(safe-area-inset-right));top:max(18px,env(safe-area-inset-top));width:38px;height:38px;font-size:19px}
       .touch-settings{position:absolute;right:max(18px,env(safe-area-inset-right));top:64px;width:210px;padding:12px;border:1px solid #ffffff60;border-radius:9px;background:#101419ed;pointer-events:auto}
       .touch-settings label{display:grid;gap:7px;margin:0 0 10px;font-size:11px}.touch-settings label:last-child{margin:0}.touch-settings input{width:100%;accent-color:#aaca79}
-      @media (orientation:landscape) and (max-height:500px){.touch-stick{width:calc(112px * var(--touch-scale));height:calc(112px * var(--touch-scale));bottom:max(12px,env(safe-area-inset-bottom))}.touch-actions{bottom:calc(max(12px,env(safe-area-inset-bottom)) + 124px * var(--touch-scale))}}
+      @media (orientation:landscape) and (max-height:500px){.touch-stick{width:calc(112px * var(--touch-scale));height:calc(112px * var(--touch-scale));bottom:max(12px,env(safe-area-inset-bottom))}.touch-actions{bottom:calc(max(12px,env(safe-area-inset-bottom)) + 124px * var(--touch-scale))}.touch-inventory{bottom:calc(max(12px,env(safe-area-inset-bottom)) + 184px * var(--touch-scale))}}
     `;
     documentRef.head.appendChild(style);
     documentRef.body.appendChild(element);
@@ -69,7 +96,9 @@
       const key = code.startsWith('Key') ? code.slice(3).toLowerCase()
         : code.startsWith('Arrow') ? code.slice(5)
           : code === 'ControlLeft' ? 'Control' : code === 'ShiftLeft' ? 'Shift'
-            : code === 'Space' ? ' ' : code === 'PageUp' ? 'PageUp' : 'PageDown';
+            : code === 'Space' ? ' ' : code === 'PageUp' ? 'PageUp'
+              : code === 'BracketLeft' ? '[' : code === 'BracketRight' ? ']'
+                : code === 'Enter' ? 'Enter' : 'PageDown';
       canvas.dispatchEvent(new windowRef.KeyboardEvent(down ? 'keydown' : 'keyup', {
         key, code, bubbles: true, cancelable: true,
       }));
@@ -129,7 +158,7 @@
     wireStick(element.querySelector('.touch-right'), {
       up: 'PageUp', down: 'PageDown', left: 'ArrowLeft', right: 'ArrowRight',
     });
-    element.querySelectorAll('.touch-actions button').forEach((button) => {
+    element.querySelectorAll('.touch-actions button, .touch-inventory button').forEach((button) => {
       const code = button.dataset.key;
       const down = (event) => { event.preventDefault(); event.stopPropagation(); sendKey(code, true); };
       const up = (event) => { event.preventDefault(); event.stopPropagation(); sendKey(code, false); };
@@ -151,7 +180,10 @@
         settings[input.dataset.setting] = Number(input.value);
         element.style.setProperty('--touch-scale', String(settings.size));
         element.style.setProperty('--touch-opacity', String(settings.opacity));
-        try { windowRef.localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (_) { /* Storage can be disabled. */ }
+        try {
+          const options = readOptions(windowRef);
+          windowRef.localStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...options, ...settings }));
+        } catch (_) { /* Storage can be disabled. */ }
       });
     });
     windowRef.addEventListener('blur', releaseAll);
@@ -167,5 +199,5 @@
     };
   }
 
-  root.ObsidianTouchControls = { supportsTouch, install, settingsKey: SETTINGS_KEY };
+  root.ObsidianTouchControls = { hasCoarsePointer, controlsEnabled, install, settingsKey: SETTINGS_KEY };
 })(globalThis);

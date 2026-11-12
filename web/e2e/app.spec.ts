@@ -96,6 +96,7 @@ test('submits selected settings, displays a completed build, and downloads its W
 });
 
 test('adds persisted dual-stick controls only in a touch browser', async ({ browser, page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, get: () => 5 }));
   await page.goto('/');
   await page.addScriptTag({ url: '/player/touch-controls.js' });
   const desktopControls = await page.evaluate(() => {
@@ -104,6 +105,14 @@ test('adds persisted dual-stick controls only in a touch browser', async ({ brow
   });
   expect(desktopControls).toBeNull();
   await expect(page.locator('.obsidian-touch-controls')).toHaveCount(0);
+  const forcedDesktopControls = await page.evaluate(() => {
+    localStorage.setItem('obsidian-web:global-options:v1', JSON.stringify({ touchControls: 'on' }));
+    const api = (window as unknown as { ObsidianTouchControls: { install: (options: unknown) => { dispose: () => void } | null } }).ObsidianTouchControls;
+    const controls = api.install({ windowRef: window, documentRef: document, canvas: document.createElement('canvas') });
+    controls?.dispose();
+    return controls !== null;
+  });
+  expect(forcedDesktopControls).toBe(true);
 
   const context = await browser.newContext({ ...devices['iPhone 13'] });
   const touchPage = await context.newPage();
@@ -135,13 +144,65 @@ test('adds persisted dual-stick controls only in a touch browser', async ({ brow
   await leftStick.dispatchEvent('pointerup', { ...pointer, clientY: pointer.clientY - 45 });
   expect(await touchPage.evaluate(() => (window as unknown as { touchKeys: string[] }).touchKeys)).toContain('up:KeyW');
 
-  await touchPage.getByRole('button', { name: 'Preview control settings' }).click();
+  await touchPage.getByRole('button', { name: 'Touch control settings' }).click();
   await touchPage.locator('[data-setting="opacity"]').evaluate((node) => {
     const slider = node as HTMLInputElement;
     slider.value = '0.75';
     slider.dispatchEvent(new Event('input', { bubbles: true }));
   });
-  expect(await touchPage.evaluate(() => JSON.parse(localStorage.getItem('obsidian-web:player-preview:v1') || '{}').opacity)).toBe(0.75);
+  expect(await touchPage.evaluate(() => JSON.parse(localStorage.getItem('obsidian-web:global-options:v1') || '{}').opacity)).toBe(0.75);
+  await context.close();
+});
+
+test('global options persist touch mode and control appearance', async ({ page }) => {
+  await page.goto('/#/options');
+  await expect(page.getByRole('heading', { name: 'Options' })).toBeVisible();
+  await expect(page.locator('#touch-controls-mode')).toHaveValue('auto');
+  await expect(page.locator('#touch-controls-status')).toContainText('no coarse pointer detected');
+  await page.locator('#touch-controls-mode').selectOption('off');
+  await page.locator('#touch-control-size').evaluate((node) => {
+    const slider = node as HTMLInputElement;
+    slider.value = '1.2';
+    slider.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('obsidian-web:global-options:v1') || '{}'))).toEqual({ touchControls: 'off', size: 1.2, opacity: 0.58 });
+  await page.reload();
+  await expect(page.locator('#touch-controls-mode')).toHaveValue('off');
+  await expect(page.locator('#touch-control-size')).toHaveValue('1.2');
+});
+
+test('touch inventory controls appear for Heretic and Hexen only', async ({ browser }) => {
+  const context = await browser.newContext({ ...devices['iPhone 13'] });
+  const page = await context.newPage();
+  for (const iwad of ['heretic.wad', 'hexen.wad']) {
+    await page.goto(`/?iwad=${iwad}`);
+    await page.addScriptTag({ url: '/player/touch-controls.js' });
+    await page.evaluate(() => {
+      const canvas = document.createElement('canvas');
+      document.body.appendChild(canvas);
+      (window as unknown as { inventoryKeys: string[] }).inventoryKeys = [];
+      canvas.addEventListener('keydown', (event) => (window as unknown as { inventoryKeys: string[] }).inventoryKeys.push(`${(event as KeyboardEvent).code}:${(event as KeyboardEvent).key}`));
+      const api = (window as unknown as { ObsidianTouchControls: { install: (options: unknown) => { show: () => void } | null } }).ObsidianTouchControls;
+      api.install({ windowRef: window, documentRef: document, canvas })?.show();
+    });
+    await expect(page.getByRole('group', { name: 'Inventory controls' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Previous inventory item' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Use inventory item' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Next inventory item' })).toBeVisible();
+    const nextItem = page.getByRole('button', { name: 'Next inventory item' });
+    await nextItem.dispatchEvent('pointerdown', { pointerId: 4, pointerType: 'touch' });
+    await nextItem.dispatchEvent('pointerup', { pointerId: 4, pointerType: 'touch' });
+    await expect.poll(() => page.evaluate(() => (window as unknown as { inventoryKeys: string[] }).inventoryKeys)).toContain('BracketRight:]');
+  }
+  await page.goto('/?iwad=doom2.wad');
+  await page.addScriptTag({ url: '/player/touch-controls.js' });
+  await page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    document.body.appendChild(canvas);
+    const api = (window as unknown as { ObsidianTouchControls: { install: (options: unknown) => { show: () => void } | null } }).ObsidianTouchControls;
+    api.install({ windowRef: window, documentRef: document, canvas })?.show();
+  });
+  await expect(page.locator('.touch-inventory')).toBeHidden();
   await context.close();
 });
 
