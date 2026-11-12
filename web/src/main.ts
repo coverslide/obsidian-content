@@ -46,6 +46,12 @@ function launcherHash(file:string, mods:string[] = []) {
   return `#/launch?${params.toString()}`;
 }
 
+function modLabel(mod:string) {
+  const job = mod.match(/^\/api\/jobs\/([^/]+)\/download$/);
+  if (job) return `Generated WAD ${job[1].slice(-6)}`;
+  return mod.split('/').pop() || mod;
+}
+
 class ObsidianApp extends CustomElement {
   static localName = 'app';
   static template = null;
@@ -139,7 +145,7 @@ class ObsidianApp extends CustomElement {
     const routeParams = new URLSearchParams(location.hash.split('?')[1] ?? '');
     const selected = routeParams.get('iwad') ?? 'doom2.wad';
     const mods = routeParams.getAll('modurl');
-    this.innerHTML = `<main class="shell history-shell launcher-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/">← BUILDER</a><a class="online" href="#/options">OPTIONS</a><a class="online" href="#/runs">RUN HISTORY</a></nav></header><section class="history-intro"><p class="eyebrow">UZDOOM PLAYER</p><h2>Ready to play</h2><p class="lede">Your game data is ready. Launch when you’re ready; the self-hosted player opens in a new tab.</p></section><section class="history-panel launch-panel"><div class="section-title"><span>01</span><h3>Game data</h3></div><label for="launch-iwad">SELECT GAME DATA</label><select id="launch-iwad">${availableIWADs.map(([file,label]) => `<option value="${file}" ${file === selected ? 'selected' : ''}>${label} · ${file}</option>`).join('')}</select><p class="form-note launch-note">Harmony is available as a base IWAD. Hexen: Deathkings loads alongside hexen.wad. Add-on WADs stay in the server’s mounted available-wads folder, outside the Docker image.</p><div class="preload-box"><h4>PRELOAD MODS · LOAD ORDER</h4><p class="form-note">Mods load in this order. Add them from the library below, then reorder or remove them here.</p><ol id="preload-order" class="preload-order">${mods.length ? mods.map((mod,index) => `<li><span>${escapeHTML(mod.split('/').pop() || mod)}</span><div><button type="button" data-mod-move="${index}" data-direction="up" aria-label="Move ${escapeHTML(mod.split('/').pop() || mod)} up" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-mod-move="${index}" data-direction="down" aria-label="Move ${escapeHTML(mod.split('/').pop() || mod)} down" ${index === mods.length-1 ? 'disabled' : ''}>↓</button><button type="button" data-mod-remove="${index}" aria-label="Remove ${escapeHTML(mod.split('/').pop() || mod)}">Remove</button></div></li>`).join('') : '<li class="preload-empty">No mods selected.</li>'}</ol></div><a class="build launch-button" id="launch-game" href="${playerHref(selected, mods)}" target="_blank" rel="noopener"><span>Launch UZDoom</span><span>↗</span></a></section><section class="history-panel included-wads-panel"><div class="section-title"><span>02</span><h3>Included WADs</h3></div><p class="form-note launch-note">Available add-ons are read from the mounted available-wads folder. Drop in WAD/PK3 files and update its catalog.json; no image rebuild is needed.</p><div id="included-wads"><p class="loading-options">Loading available add-ons…</p></div></section><footer><span>SELF-HOSTED UZDOOM · LOCAL IWAD STORAGE</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
+    this.innerHTML = `<main class="shell history-shell launcher-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/">← BUILDER</a><a class="online" href="#/options">OPTIONS</a><a class="online" href="#/runs">RUN HISTORY</a></nav></header><section class="history-intro"><p class="eyebrow">UZDOOM PLAYER</p><h2>Ready to play</h2><p class="lede">Your game data is ready. Launch when you’re ready; the self-hosted player opens in a new tab.</p></section><section class="history-panel launch-panel"><div class="section-title"><span>01</span><h3>Game data</h3></div><label for="launch-iwad">SELECT GAME DATA</label><select id="launch-iwad">${availableIWADs.map(([file,label]) => `<option value="${file}" ${file === selected ? 'selected' : ''}>${label} · ${file}</option>`).join('')}</select><p class="form-note launch-note">Harmony is available as a base IWAD. Hexen: Deathkings loads alongside hexen.wad. Add-on WADs stay in the server’s mounted available-wads folder, outside the Docker image.</p><div class="preload-box"><h4>PRELOAD MODS · LOAD ORDER</h4><p class="form-note">Mods load in this order. Add them from the library below, then reorder or remove them here.</p><ol id="preload-order" class="preload-order">${mods.length ? mods.map((mod,index) => { const label = modLabel(mod); return `<li><span data-mod-label="${index}">${escapeHTML(label)}</span><div><button type="button" data-mod-move="${index}" data-direction="up" aria-label="Move ${escapeHTML(label)} up" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-mod-move="${index}" data-direction="down" aria-label="Move ${escapeHTML(label)} down" ${index === mods.length-1 ? 'disabled' : ''}>↓</button><button type="button" data-mod-remove="${index}" aria-label="Remove ${escapeHTML(label)}">Remove</button></div></li>`; }).join('') : '<li class="preload-empty">No mods selected.</li>'}</ol></div><a class="build launch-button" id="launch-game" href="${playerHref(selected, mods)}" target="_blank" rel="noopener"><span>Launch UZDoom</span><span>↗</span></a></section><section class="history-panel included-wads-panel"><div class="section-title"><span>02</span><h3>Included WADs</h3></div><p class="form-note launch-note">Available add-ons are read from the mounted available-wads folder. Drop in WAD/PK3 files and update its catalog.json; no image rebuild is needed.</p><div id="included-wads"><p class="loading-options">Loading available add-ons…</p></div></section><footer><span>SELF-HOSTED UZDOOM · LOCAL IWAD STORAGE</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
     const select = this.querySelector<HTMLSelectElement>('#launch-iwad')!;
     const link = this.querySelector<HTMLAnchorElement>('#launch-game')!;
     select.addEventListener('change', () => {
@@ -160,7 +166,25 @@ class ObsidianApp extends CustomElement {
       }
       location.hash = launcherHash(select.value, next);
     });
+    void this.resolveGeneratedWadTitles(mods);
     void this.loadIncludedWads();
+  }
+
+  private async resolveGeneratedWadTitles(mods:string[]) {
+    await Promise.all(mods.map(async (mod,index) => {
+      const match = mod.match(/^\/api\/jobs\/([^/]+)\/download$/);
+      if (!match) return;
+      try {
+        const response = await fetch(`/api/jobs/${encodeURIComponent(match[1])}`);
+        if (!response.ok) throw new Error(`job metadata returned HTTP ${response.status}`);
+        const job = await response.json() as Job;
+        const current = new URLSearchParams(location.hash.split('?')[1] ?? '').getAll('modurl');
+        const label = this.querySelector<HTMLElement>(`[data-mod-label="${index}"]`);
+        if (job.title?.trim() && current[index] === mod && label) label.textContent = `${job.title.trim()}.wad`;
+      } catch (error) {
+        console.error(`Could not resolve generated WAD title for run ${match[1]}`, error);
+      }
+    }));
   }
 
   private async loadIncludedWads() {

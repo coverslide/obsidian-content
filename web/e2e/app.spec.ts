@@ -279,6 +279,19 @@ test('launch page opens the selected local IWAD, including Harmony', async ({ pa
   expect(hexenUrl.searchParams.getAll('modurl')).toEqual(['/play/private/hexdd.wad', '/play/private/available-wads/nerve.wad']);
 });
 
+test('shows the generated WAD title instead of the download route in preload mods', async ({ page }) => {
+  await page.route(jobsEndpoint, (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/jobs/123456', (route) => route.fulfill({ json: {
+    id: '123456', status: 'completed', title: 'Ash Harbor',
+  } }));
+  await page.route('**/play/private/available-wads/catalog.json', (route) => route.fulfill({ json: [] }));
+  await page.goto('/#/launch?iwad=doom2.wad&modurl=%2Fapi%2Fjobs%2F123456%2Fdownload');
+
+  const preload = page.locator('#preload-order');
+  await expect(preload).toContainText('Ash Harbor.wad');
+  await expect(preload).not.toContainText('download');
+});
+
 test('keeps non-WAD targets in backend references but hides them from the web builder', async ({ page }) => {
   const reference = structuredClone(optionReference);
   reference.main_build_settings.game.values.push('wolf', 'spear', 'nukem');

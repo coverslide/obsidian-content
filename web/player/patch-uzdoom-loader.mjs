@@ -23,8 +23,20 @@ const patches = [
     '      await resolveSideloadedIwad();',
     `      await resolveSideloadedIwad();
       for (const modURL of launcherArgs.modURLs) {
+        const jobMatch = /^\\/api\\/jobs\\/([^/]+)\\/download$/.exec(modURL);
+        let basename = modURL.split('/').pop().replace(/[^A-Za-z0-9_.-]/g, '_');
+        if (jobMatch) {
+          basename = 'obsidian-' + jobMatch[1] + '.wad';
+          try {
+            const jobResponse = await fetch('/api/jobs/' + encodeURIComponent(jobMatch[1]));
+            if (!jobResponse.ok) throw new Error('job metadata returned HTTP ' + jobResponse.status);
+            const job = await jobResponse.json();
+            if (typeof job.title === 'string' && job.title.trim()) basename = job.title.trim().replace(/[^A-Za-z0-9_. -]/g, '_') + '.wad';
+          } catch (error) {
+            console.error('Could not resolve generated WAD title for ' + jobMatch[1], error);
+          }
+        }
         const modFile = await fetchWithProgress(modURL);
-        const basename = modURL.split('/').pop().replace(/[^A-Za-z0-9_.-]/g, '_');
         state.mods.push({ name: basename || 'obsidian-addon.wad', data: modFile });
       }`,
   ],
