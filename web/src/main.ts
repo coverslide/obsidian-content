@@ -25,10 +25,19 @@ const availableIWADs = [
   ['freedoom2.wad', 'Freedoom: Phase 2'], ['freedm.wad', 'FreeDM'],
 ];
 
-function launchHref(file:string) {
+type IncludedWad = { title:string; iwad:string; files:string[]; description:string };
+const wadPath = (file:string) => `/play/private/available-wads/${encodeURIComponent(file)}`;
+
+function playerHref(file:string, mods:string[] = []) {
   const params = new URLSearchParams({ iwad: file === 'hexdd.wad' ? 'hexen.wad' : file });
-  if (file === 'hexdd.wad') params.set('modurl', '/play/private/hexdd.wad');
+  for (const mod of (file === 'hexdd.wad' ? ['/play/private/hexdd.wad', ...mods] : mods)) params.append('modurl', mod);
   return `/play/?${params.toString()}`;
+}
+
+function launchHref(file:string, mods:string[] = []) {
+  const params = new URLSearchParams({ iwad: file === 'hexdd.wad' ? 'hexen.wad' : file });
+  for (const mod of (file === 'hexdd.wad' ? ['/play/private/hexdd.wad', ...mods] : mods)) params.append('modurl', mod);
+  return `/#/launch?${params.toString()}`;
 }
 
 class ObsidianApp extends CustomElement {
@@ -56,7 +65,10 @@ class ObsidianApp extends CustomElement {
   private runId() {
     const match = location.hash.match(/^#\/runs\/([^/?#]+)/);
     if (!match) return;
-    try { return decodeURIComponent(match[1]); } catch { return; }
+    try { return decodeURIComponent(match[1]); } catch (error) {
+      console.error('Invalid run id in route', error);
+      return;
+    }
   }
 
   private isHistory() { return location.hash === '#/runs' || location.hash.startsWith('#/runs?'); }
@@ -82,7 +94,10 @@ class ObsidianApp extends CustomElement {
         size: Number.isFinite(saved?.size) ? Math.min(1.35, Math.max(0.75, saved.size)) : defaultGlobalOptions.size,
         opacity: Number.isFinite(saved?.opacity) ? Math.min(0.9, Math.max(0.25, saved.opacity)) : defaultGlobalOptions.opacity,
       };
-    } catch { return { ...defaultGlobalOptions }; }
+    } catch (error) {
+      console.error('Could not read saved player options; using defaults', error);
+      return { ...defaultGlobalOptions };
+    }
   }
 
   private renderOptions() {
@@ -98,7 +113,8 @@ class ObsidianApp extends CustomElement {
       try {
         localStorage.setItem(globalOptionsKey, JSON.stringify(value));
         this.querySelector<HTMLElement>('#options-saved')!.textContent = 'Saved automatically on this device.';
-      } catch {
+      } catch (error) {
+        console.error('Could not save global player options', error);
         this.querySelector<HTMLElement>('#options-saved')!.textContent = 'Could not save preferences in this browser.';
       }
       this.querySelector<HTMLOutputElement>('#touch-size-value')!.value = value.size.toFixed(2);
@@ -114,14 +130,39 @@ class ObsidianApp extends CustomElement {
   }
 
   private renderLauncher() {
-    const selected = new URLSearchParams(location.hash.split('?')[1] ?? '').get('iwad') ?? 'doom2.wad';
-    this.innerHTML = `<main class="shell history-shell launcher-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/">← BUILDER</a><a class="online" href="#/options">OPTIONS</a><a class="online" href="#/runs">RUN HISTORY</a></nav></header><section class="history-intro"><p class="eyebrow">UZDOOM PLAYER</p><h2>Launch a game</h2><p class="lede">Choose an IWAD mounted on this server and open the self-hosted UZDoom player.</p></section><section class="history-panel launch-panel"><div class="section-title"><span>01</span><h3>Game data</h3></div><label for="launch-iwad">SELECT GAME DATA</label><select id="launch-iwad">${availableIWADs.map(([file,label]) => `<option value="${file}" ${file === selected ? 'selected' : ''}>${label} · ${file}</option>`).join('')}</select><p class="form-note launch-note">Harmony uses harm1.wad. Hexen: Deathkings loads hexdd.wad with hexen.wad. The WAD files stay on the server; they are not embedded in the app image.</p><a class="build launch-button" id="launch-game" href="${launchHref(selected)}" target="_blank" rel="noopener"><span>Launch UZDoom</span><span>↗</span></a></section><footer><span>SELF-HOSTED UZDOOM · LOCAL IWAD STORAGE</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
+    const routeParams = new URLSearchParams(location.hash.split('?')[1] ?? '');
+    const selected = routeParams.get('iwad') ?? 'doom2.wad';
+    const mods = routeParams.getAll('modurl');
+    this.innerHTML = `<main class="shell history-shell launcher-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/">← BUILDER</a><a class="online" href="#/options">OPTIONS</a><a class="online" href="#/runs">RUN HISTORY</a></nav></header><section class="history-intro"><p class="eyebrow">UZDOOM PLAYER</p><h2>Ready to play</h2><p class="lede">Your game data is ready. Launch when you’re ready; the self-hosted player opens in a new tab.</p></section><section class="history-panel launch-panel"><div class="section-title"><span>01</span><h3>Game data</h3></div><label for="launch-iwad">SELECT GAME DATA</label><select id="launch-iwad">${availableIWADs.map(([file,label]) => `<option value="${file}" ${file === selected ? 'selected' : ''}>${label} · ${file}</option>`).join('')}</select><p class="form-note launch-note">Harmony is available as a base IWAD. Hexen: Deathkings loads alongside hexen.wad. Add-on WADs stay in the server’s mounted available-wads folder, outside the Docker image.</p>${mods.length ? `<p class="form-note selected-mods">Add-on selected: ${mods.map(m => escapeHTML(m.split('/').pop() || m)).join(', ')}</p>` : ''}<a class="build launch-button" id="launch-game" href="${playerHref(selected, mods)}" target="_blank" rel="noopener"><span>Launch UZDoom</span><span>↗</span></a></section><section class="history-panel included-wads-panel"><div class="section-title"><span>02</span><h3>Included WADs</h3></div><p class="form-note launch-note">Available add-ons are read from the mounted available-wads folder. Drop in WAD/PK3 files and update its catalog.json; no image rebuild is needed.</p><div id="included-wads"><p class="loading-options">Loading available add-ons…</p></div></section><footer><span>SELF-HOSTED UZDOOM · LOCAL IWAD STORAGE</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
     const select = this.querySelector<HTMLSelectElement>('#launch-iwad')!;
     const link = this.querySelector<HTMLAnchorElement>('#launch-game')!;
     select.addEventListener('change', () => {
-      link.href = launchHref(select.value);
-      location.hash = `#/launch?iwad=${encodeURIComponent(select.value)}`;
+      link.href = playerHref(select.value, mods);
+      const nextParams = new URLSearchParams({ iwad: select.value });
+      for (const mod of mods) nextParams.append('modurl', mod);
+      location.hash = `#/launch?${nextParams.toString()}`;
     });
+    void this.loadIncludedWads();
+  }
+
+  private async loadIncludedWads() {
+    const host = this.querySelector<HTMLElement>('#included-wads');
+    if (!host) return;
+    try {
+      const response = await fetch('/play/private/available-wads/catalog.json');
+      if (!response.ok) throw new Error(`available-wads catalog returned HTTP ${response.status}`);
+      const entries:IncludedWad[] = await response.json();
+      if (!Array.isArray(entries)) throw new Error('available-wads catalog must be a JSON array');
+      host.innerHTML = entries.map(entry => {
+        if (!entry || typeof entry.title !== 'string' || typeof entry.description !== 'string' || !Array.isArray(entry.files) || !['doom.wad','doom2.wad','heretic.wad','hexen.wad'].includes(entry.iwad)) throw new Error('Invalid add-on entry in available-wads/catalog.json');
+        const safeFiles = entry.files.filter(file => typeof file === 'string' && /^[A-Za-z0-9_. -]+\.(wad|pk3)$/i.test(file));
+        if (!safeFiles.length) throw new Error(`No valid WAD/PK3 files listed for ${entry.title}`);
+        const modURLs = safeFiles.map(wadPath);
+        return `<article class="included-wad"><div><h4>${escapeHTML(entry.title)}</h4><p>${escapeHTML(entry.description)}</p><small>${safeFiles.map(escapeHTML).join(' + ')}</small></div><a class="wad-play" href="${launchHref(entry.iwad, modURLs)}">Prepare to play</a>${safeFiles.map(file => `<a class="wad-download" href="${wadPath(file)}" download>Download ${escapeHTML(file)}</a>`).join('')}</article>`;
+      }).join('') || '<p class="empty-wads">No add-ons are listed yet.</p>';
+    } catch (error) {
+      this.showApiError(host, 'Could not load available WADs', error);
+    }
   }
 
   private renderHome() {
@@ -162,6 +203,7 @@ class ObsidianApp extends CustomElement {
       const settings = this.loadSettings();
       if (settings) this.applySettings(settings, false);
     } catch (error) {
+      console.error('Failed to load Obsidian option reference', error);
       const groups = this.querySelector<HTMLElement>('#option-groups');
       if (groups) groups.innerHTML = `<p class="option-error">${escapeHTML(error instanceof Error ? error.message : 'Could not load options')}</p>`;
     }
@@ -180,6 +222,7 @@ class ObsidianApp extends CustomElement {
       if (!response.ok) throw new Error(await response.text());
       await this.refresh();
     } catch (error) {
+      console.error('Failed to queue Obsidian build', error);
       alert(error instanceof Error ? error.message : 'Could not queue build');
     } finally {
       button.disabled = false;
@@ -211,9 +254,7 @@ class ObsidianApp extends CustomElement {
         if (next) next.disabled = !hasNext;
       }
     } catch (error) {
-      console.error('Failed to load runs from /api/jobs', error);
-      const message = error instanceof Error ? error.message : String(error);
-      host.innerHTML = `<div class="api-error" role="alert"><strong>Could not load runs</strong><p>${escapeHTML(message)}</p><small>Check the server connection and retry.</small></div>`;
+      this.showApiError(host, 'Failed to load runs from /api/jobs', error);
     }
   }
 
@@ -227,7 +268,10 @@ class ObsidianApp extends CustomElement {
         host.innerHTML = '<p class="option-error">This run was not found. It may have been deleted.</p>';
         return;
       }
-      if (!response.ok) return;
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Run API returned ${response.status}${body ? `: ${body}` : ''}`);
+      }
       const job = await response.json() as Job;
       let card = host.querySelector<HTMLDetailsElement>('.job[data-job-id]');
       const snapshot = JSON.stringify(job);
@@ -243,12 +287,13 @@ class ObsidianApp extends CustomElement {
       }
       if (job.status === 'running' || ((job.status === 'failed' || job.status === 'completed') && card.dataset.logLoaded !== 'true')) {
         const logs = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/logs`);
-        if (logs.ok) {
-          this.appendLog(job.id, await logs.text());
-          card.dataset.logLoaded = 'true';
-        }
+        if (!logs.ok) throw new Error(`Run log API returned ${logs.status}`);
+        this.appendLog(job.id, await logs.text());
+        card.dataset.logLoaded = 'true';
       }
-    } catch { /* The API may still be starting. */ }
+    } catch (error) {
+      this.showApiError(host, `Failed to load run ${id}`, error);
+    }
   }
 
   private renderJobs(host:HTMLElement, jobs:Job[]) {
@@ -268,12 +313,26 @@ class ObsidianApp extends CustomElement {
       if (!shouldFetch) return;
       try {
         const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/logs`);
-        if (response.ok) {
-          const log = await response.text();
-          this.appendLog(job.id, log);
-          cards.get(job.id)!.dataset.logLoaded = 'true';
+        if (!response.ok) throw new Error(`Run log API returned ${response.status}`);
+        const log = await response.text();
+        this.appendLog(job.id, log);
+        cards.get(job.id)!.dataset.logLoaded = 'true';
+        cards.get(job.id)!.querySelector('.job-api-error')?.remove();
+      } catch (error) {
+        console.error(`Failed to load log for run ${job.id}`, error);
+        const card = cards.get(job.id);
+        const content = card?.querySelector<HTMLElement>('.job-content');
+        if (content) {
+          let message = content.querySelector<HTMLElement>('.job-api-error');
+          if (!message) {
+            message = document.createElement('div');
+            message.className = 'api-error job-api-error';
+            message.setAttribute('role', 'alert');
+            content.prepend(message);
+          }
+          message.innerHTML = `<strong>Could not load run log</strong><p>${escapeHTML(error instanceof Error ? error.message : String(error))}</p>`;
         }
-      } catch { /* Keep the most recent log text already displayed. */ }
+      }
     });
 
     jobs.forEach((job, index) => {
@@ -310,6 +369,12 @@ class ObsidianApp extends CustomElement {
     return card;
   }
 
+  private showApiError(host:HTMLElement, context:string, error:unknown) {
+    console.error(context, error);
+    const message = error instanceof Error ? error.message : String(error);
+    host.innerHTML = `<div class="api-error" role="alert"><strong>${escapeHTML(context)}</strong><p>${escapeHTML(message)}</p><small>Check the server connection and retry.</small></div>`;
+  }
+
   private updateJobCard(card:HTMLElement, job:Job) {
     card.querySelector<HTMLElement>('.job-icon')!.textContent = job.status === 'completed' ? '✓' : job.status === 'failed' ? '!' : '◌';
     card.querySelector<HTMLElement>('.job-info strong')!.textContent = `OBSIDIAN-${job.id.slice(-6).toUpperCase()}`;
@@ -325,8 +390,7 @@ class ObsidianApp extends CustomElement {
     const iwad = job.settings?.game ? previewIWADs[job.settings.game] : undefined;
     play.hidden = job.status !== 'completed' || !job.file || !iwad;
     if (iwad) {
-      const params = new URLSearchParams({ iwad, modurl: `/api/jobs/${encodeURIComponent(job.id)}/download`, warp: iwad === 'doom.wad' ? '1,1' : '1' });
-      play.href = `/play/?${params.toString()}`;
+      play.href = launchHref(iwad, [`/api/jobs/${encodeURIComponent(job.id)}/download`]);
     }
     const error = card.querySelector<HTMLElement>('.error')!;
     error.hidden = job.status !== 'failed';
@@ -356,7 +420,7 @@ class ObsidianApp extends CustomElement {
     if (!next) return;
     const card = Array.from(this.querySelectorAll<HTMLElement>('.job[data-job-id]')).find(item => item.dataset.jobId === id);
     if (!card) return;
-    const pre = card.querySelector('pre')!;
+    const pre = card.querySelector<HTMLElement>('.job-logs pre')!;
     const previous = this.logContents.get(id) ?? '';
     if (next === previous) return;
     if (!previous) pre.textContent = '';
@@ -384,19 +448,26 @@ class ObsidianApp extends CustomElement {
         await this.refresh();
       }
     } catch (error) {
+      console.error(`Failed to delete run ${job.id}`, error);
       window.alert(error instanceof Error ? error.message : 'Could not delete failed run');
       button.disabled = false;
     }
   }
 
   private reuseSettings(settings:JobSettings) {
-    try { localStorage.setItem(lastSettingsKey, JSON.stringify(settings)); } catch { /* Storage can be unavailable. */ }
+    try { localStorage.setItem(lastSettingsKey, JSON.stringify(settings)); } catch (error) {
+      console.error('Could not save reused settings to local storage', error);
+    }
     if (this.isHistory()) location.hash = '#/';
     else this.applySettings(settings, true);
   }
 
   private saveSettings(form:HTMLFormElement) {
-    try { localStorage.setItem(lastSettingsKey, JSON.stringify(jobPayload(new FormData(form)))); } catch { /* Storage can be unavailable. */ }
+    try { localStorage.setItem(lastSettingsKey, JSON.stringify(jobPayload(new FormData(form)))); } catch (error) {
+      console.error('Could not save build settings to local storage', error);
+      const note = form.querySelector<HTMLElement>('.form-note');
+      if (note) note.textContent = 'Could not save settings in this browser.';
+    }
   }
 
   private loadSettings():JobSettings|undefined {
@@ -405,7 +476,10 @@ class ObsidianApp extends CustomElement {
       if (!raw) return;
       const value = JSON.parse(raw) as JobSettings;
       if (typeof value.game === 'string' && typeof value.options === 'object' && value.options !== null) return value;
-    } catch { /* Ignore malformed storage. */ }
+      console.error('Saved build settings have an invalid shape; ignoring them');
+    } catch (error) {
+      console.error('Could not read saved build settings from local storage', error);
+    }
     return;
   }
 

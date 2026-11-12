@@ -73,11 +73,11 @@ test('submits selected settings, displays a completed build, and downloads its W
   await page.locator('.job[data-job-id="job-123"] > summary').click();
   await expect(page.getByRole('link', { name: /Download WAD/ })).toBeVisible();
   const playHref = await page.getByRole('link', { name: /Play in UZDoom/ }).getAttribute('href');
-  expect(playHref).toContain('/play/?');
+  expect(playHref).toContain('#/launch?');
   const playUrl = new URL(playHref!, 'http://localhost');
-  expect(playUrl.searchParams.get('iwad')).toBe('doom.wad');
-  expect(playUrl.searchParams.get('modurl')).toBe('/api/jobs/job-123/download');
-  expect(playUrl.searchParams.get('warp')).toBe('1,1');
+  const playParams = new URLSearchParams(playUrl.hash.split('?')[1]);
+  expect(playParams.get('iwad')).toBe('doom.wad');
+  expect(playParams.get('modurl')).toBe('/api/jobs/job-123/download');
   expect(submitted).toEqual({
     game: 'doom1', port: 'zdoom', theme: 'tech', length: 'single', seed: 'e2e-seed',
     options: { float_size: '8', walls: 'metal', enabled: '0' },
@@ -237,15 +237,21 @@ test('selects the local IWAD matching each generated game type', async ({ page }
     const card = page.locator(`.job[data-job-id="iwad-${index}"]`);
     await card.locator(':scope > summary').click();
     const href = await card.locator('.play-test').getAttribute('href');
-    expect(new URL(href!, 'http://localhost').searchParams.get('iwad'), game).toBe(iwad);
+    const params = new URLSearchParams(new URL(href!, 'http://localhost').hash.split('?')[1]);
+    expect(params.get('iwad'), game).toBe(iwad);
     await expect(card.locator('.play-test')).toBeVisible();
   }
 });
 
 test('launch page opens the selected local IWAD, including Harmony', async ({ page }) => {
+  await page.route('**/play/private/available-wads/catalog.json', (route) => route.fulfill({ json: [
+    { title: 'No Rest for the Living', iwad: 'doom2.wad', files: ['nerve.wad'], description: 'Steam copy' },
+  ] }));
   await page.goto('/#/launch');
-  await expect(page.getByRole('heading', { name: 'Launch a game' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Ready to play' })).toBeVisible();
   await expect(page.locator('#launch-iwad')).toHaveValue('doom2.wad');
+  await expect(page.getByRole('heading', { name: 'Included WADs' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'No Rest for the Living' })).toBeVisible();
   await page.locator('#launch-iwad').selectOption('harm1.wad');
   await expect(page).toHaveURL(/#\/launch\?iwad=harm1\.wad$/);
   const launch = page.getByRole('link', { name: /Launch UZDoom/ });
@@ -279,7 +285,7 @@ test('shows a failed generation message without rendering it as HTML', async ({ 
   await page.route('**/api/jobs/failed-1/logs', (route) => route.fulfill({ body: 'generator started\nfailed while placing rooms\n', contentType: 'text/plain' }));
   await page.goto('/');
   await page.locator('.job[data-job-id="failed-1"] > summary').click();
-  await expect(page.getByText(/generator error/)).toBeVisible();
+  await expect(page.locator('.job[data-job-id="failed-1"] .error')).toContainText('generator error');
   await expect(page.locator('.error img')).toHaveCount(0);
   await expect(page.locator('.job-logs pre')).toContainText('failed while placing rooms');
 });
@@ -360,8 +366,9 @@ test('failed runs can be deleted', async ({ page }) => {
   const card = page.locator('.job[data-job-id="failed-delete"]');
   await card.locator(':scope > summary').click();
   const confirm = page.waitForEvent('dialog');
-  await card.getByRole('button', { name: 'Delete failed run' }).click();
+  const removeRun = card.getByRole('button', { name: 'Delete failed run' }).click();
   await (await confirm).accept();
+  await removeRun;
   await expect(page.getByText('No runs yet')).toBeVisible();
   expect(deleted).toBe(true);
 });

@@ -10,21 +10,22 @@ const touchControls = await readFile(join(dirname(fileURLToPath(import.meta.url)
 const patches = [
   [
     'const out = { iwad: null, files: [], argv: [], nomelt: false };',
-    'const out = { iwad: null, files: [], argv: [], nomelt: false, modURL: null };',
+    'const out = { iwad: null, files: [], argv: [], nomelt: false, modURLs: [] };',
   ],
   [
     '    const fileStr = params.get(\'file\');',
-    `    const modURL = params.get('modurl');
-    // Only fetch this app's own completed-job download route.
-    if (modURL && (/^\\/api\\/jobs\\/\\d+\\/download$/.test(modURL) || modURL === '/play/private/hexdd.wad')) out.modURL = modURL;
+    `    const modURLs = params.getAll('modurl');
+    // Mods must come from this app's completed-job route or its read-only WAD mount.
+    out.modURLs = modURLs.filter((url) => /^\\/api\\/jobs\\/\\d+\\/download$/.test(url) || /^\\/play\\/private\\/(?:available-wads\\/)?[A-Za-z0-9_.-]+\\.(?:wad|pk3)$/i.test(url));
     const fileStr = params.get('file');`,
   ],
   [
     '      await resolveSideloadedIwad();',
     `      await resolveSideloadedIwad();
-      if (launcherArgs.modURL) {
-        const generatedWad = await fetchWithProgress(launcherArgs.modURL);
-        state.mods.push({ name: 'obsidian-generated.wad', data: generatedWad });
+      for (const modURL of launcherArgs.modURLs) {
+        const modFile = await fetchWithProgress(modURL);
+        const basename = modURL.split('/').pop().replace(/[^A-Za-z0-9_.-]/g, '_');
+        state.mods.push({ name: basename || 'obsidian-addon.wad', data: modFile });
       }`,
   ],
   [

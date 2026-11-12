@@ -1,0 +1,16 @@
+[
+  {"title":"Alien Vendetta","iwad":"doom2.wad","files":["av.wad","avmovfix.wad"],"description":"Classic 32-map megawad from the idgames archive."},
+  {"title":"Daedalus: Alien Defense","iwad":"doom2.wad","files":["daedalus.wad"],"description":"TeamTNT’s 32-map campaign."},
+  {"title":"Eternal Doom","iwad":"doom2.wad","files":["eternall.wad"],"description":"The original Team Eternal megawad."},
+  {"title":"Icarus: Alien Vanguard","iwad":"doom2.wad","files":["icarus.wad"],"description":"TeamTNT’s science-fiction campaign."},
+  {"title":"Legacy of Rust","iwad":"doom2.wad","files":["id1.wad"],"description":"Steam-installed official 16-map expansion; requires MBF21, with ID24 recommended."},
+  {"title":"Memento Mori","iwad":"doom2.wad","files":["mm.wad","mmmus.wad"],"description":"32 maps with its original music WAD."},
+  {"title":"Memento Mori II","iwad":"doom2.wad","files":["mm2.wad","mm2mus.wad"],"description":"32 maps with its original music WAD."},
+  {"title":"My House (WAD edition)","iwad":"doom2.wad","files":["myhouse.wad"],"description":"The original single-map release; requires a GZDoom-family source port."},
+  {"title":"MyHouse (PK3 edition)","iwad":"doom2.wad","files":["myhouse.pk3"],"description":"Creator-shared expanded release with ZScript content."},
+  {"title":"No Rest for the Living","iwad":"doom2.wad","files":["nerve.wad"],"description":"Steam-installed official Doom II expansion."},
+  {"title":"Scythe","iwad":"doom2.wad","files":["scythe.wad"],"description":"Erik Alm’s 32-map megawad."},
+  {"title":"Scythe 2","iwad":"doom2.wad","files":["scythe2.wad"],"description":"The 32-map sequel by Erik Alm."},
+  {"title":"SIGIL","iwad":"doom.wad","files":["sigil.wad"],"description":"John Romero’s fifth episode for DOOM."},
+  {"title":"SIGIL II","iwad":"doom.wad","files":["sigil2.wad"],"description":"John Romero’s sequel episode."}
+]
