@@ -70,6 +70,7 @@ test('submits selected settings, displays a completed build, and downloads its W
   await page.getByRole('button', { name: /Generate WAD/ }).click();
 
   await expect(page.getByText(/OBSIDIAN-.*123/i)).toBeVisible();
+  await page.locator('.job[data-job-id="job-123"] > summary').click();
   await expect(page.getByRole('link', { name: /Download WAD/ })).toBeVisible();
   const playHref = await page.getByRole('link', { name: /Play in UZDoom/ }).getAttribute('href');
   expect(playHref).toContain('/play/?');
@@ -158,6 +159,7 @@ test('selects the local IWAD matching each generated game type', async ({ page }
   await page.goto('/');
   for (const [index, [game, iwad]] of Object.entries(mappings).entries()) {
     const card = page.locator(`.job[data-job-id="iwad-${index}"]`);
+    await card.locator(':scope > summary').click();
     const href = await card.locator('.play-test').getAttribute('href');
     expect(new URL(href!, 'http://localhost').searchParams.get('iwad'), game).toBe(iwad);
     await expect(card.locator('.play-test')).toBeVisible();
@@ -171,6 +173,7 @@ test('shows a failed generation message without rendering it as HTML', async ({ 
   }] }));
   await page.route('**/api/jobs/failed-1/logs', (route) => route.fulfill({ body: 'generator started\nfailed while placing rooms\n', contentType: 'text/plain' }));
   await page.goto('/');
+  await page.locator('.job[data-job-id="failed-1"] > summary').click();
   await expect(page.getByText(/generator error/)).toBeVisible();
   await expect(page.locator('.error img')).toHaveCount(0);
   await expect(page.locator('.job-logs pre')).toContainText('failed while placing rooms');
@@ -188,6 +191,7 @@ test('shows live output for a running generator and restores last settings from 
   await page.route('**/api/jobs/live-1/logs', (route) => route.fulfill({ body: tailLines, contentType: 'text/plain' }));
   await page.context().route('**/api/jobs/live-1/log', (route) => route.fulfill({ body: 'complete plaintext log from start to finish', contentType: 'text/plain' }));
   await page.goto('/');
+  await page.locator('.job[data-job-id="live-1"] > summary').click();
   await expect(page.locator('[name="core.game"]')).toHaveValue('doom1');
   await expect(page.locator('[name="core.port"]')).toHaveValue('zdoom');
   await expect(page.locator('[name="seed"]')).toHaveValue('remember-me');
@@ -229,6 +233,51 @@ test('keeps the most recent form settings after a page reload', async ({ page })
   await expect(page.locator('[name="option.float_size"]')).toHaveValue('7');
 });
 
+test('failed runs can be deleted', async ({ page }) => {
+  await mockReference(page);
+  let deleted = false;
+  await page.route(jobsEndpoint, async (route) => {
+    await route.fulfill({ json: deleted ? [] : [{
+      id: 'failed-delete', status: 'failed', createdAt: '2026-01-02T03:04:05Z', error: 'generation failed',
+      settings: { game: 'heretic', port: 'zdoom', theme: 'original', length: 'game', seed: 'failed-seed', options: {} },
+    }] });
+  });
+  await page.route('**/api/jobs/failed-delete/logs', (route) => route.fulfill({ body: 'failed output\n', contentType: 'text/plain' }));
+  await page.route('**/api/jobs/failed-delete', async (route) => {
+    if (route.request().method() === 'DELETE') {
+      deleted = true;
+      await route.fulfill({ status: 204, body: '' });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto('/');
+  const card = page.locator('.job[data-job-id="failed-delete"]');
+  await card.locator(':scope > summary').click();
+  const confirm = page.waitForEvent('dialog');
+  await card.getByRole('button', { name: 'Delete failed run' }).click();
+  await (await confirm).accept();
+  await expect(page.getByText('No runs yet')).toBeVisible();
+  expect(deleted).toBe(true);
+});
+
+test('opens a run on its own detail page with status and settings', async ({ page }) => {
+  await mockReference(page);
+  const job = {
+    id: 'run-detail', status: 'completed', createdAt: '2026-01-02T03:04:05Z', file: '/api/jobs/run-detail/download',
+    settings: { game: 'heretic', port: 'zdoom', theme: 'original', length: 'game', seed: 'detail-seed', options: { float_size: '8' } },
+  };
+  await page.route('**/api/jobs/run-detail', (route) => route.fulfill({ json: job }));
+  await page.route('**/api/jobs/run-detail/logs', (route) => route.fulfill({ body: 'generated successfully\n', contentType: 'text/plain' }));
+  await page.goto('/#/runs/run-detail');
+  await expect(page.getByRole('heading', { name: 'Generated run' })).toBeVisible();
+  await expect(page.locator('.job[data-job-id="run-detail"]')).toHaveAttribute('open', '');
+  await expect(page.locator('.status')).toHaveText('completed');
+  await expect(page.locator('.run-settings pre')).toContainText('detail-seed');
+  await expect(page.locator('.run-settings pre')).toContainText('float_size');
+  await expect(page.getByRole('link', { name: '← ALL RUNS' })).toHaveAttribute('href', '#/runs');
+});
+
 test('reports a queue error and makes the build button available again', async ({ page }) => {
   await mockReference(page);
   await page.route(jobsEndpoint, async (route) => {
@@ -265,9 +314,11 @@ test('shows five recent runs, paginates history, and reuses settings back on the
   await page.getByRole('link', { name: /VIEW ALL RUNS/ }).click();
   await expect(page).toHaveURL(/#\/runs$/);
   await expect(page.locator('.job[data-job-id]')).toHaveCount(20);
+  await page.locator('.job[data-job-id="run-21"] > summary').click();
   await page.getByRole('button', { name: 'Next' }).click();
   await expect(page).toHaveURL(/#\/runs\?page=2$/);
   await expect(page.locator('.job[data-job-id]')).toHaveCount(1);
+  await page.locator('.job[data-job-id="run-1"] > summary').click();
   await page.getByRole('button', { name: 'Reuse settings' }).click();
   await expect(page).toHaveURL(/#\/$/);
   await expect(page.locator('[name="core.game"]')).toHaveValue('doom1');

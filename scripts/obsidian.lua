@@ -2050,6 +2050,25 @@ function ob_build_setup()
     end
   end
 
+  -- Some legacy game packs predate generated title screens and keep their
+  -- palette outside the modern RESOURCES table.  Reuse Doom's title styles
+  -- and the game's own palette as compatibility defaults for those targets.
+  if GAME.format == "doom" and DOOM then
+    if not GAME.RESOURCES then GAME.RESOURCES = {} end
+    if not GAME.RESOURCES.PALETTES and GAME.PALETTES then
+      GAME.RESOURCES.PALETTES = GAME.PALETTES
+    end
+    for _,name in ipairs({
+      "TITLE_MAIN_STYLES",
+      "TITLE_SUB_STYLES",
+      "TITLE_SPACE_STYLES",
+      "TITLE_INTERMISSION_STYLES",
+      "TITLE_COLOR_RAMPS",
+    }) do
+      if not GAME[name] then GAME[name] = DOOM[name] end
+    end
+  end
+
 
   PARAM = assert(GAME.PARAMETERS)
 
@@ -2207,6 +2226,9 @@ local function ob_get_module_refs()
         "tnt",
         "plutonia",
         "heretic",
+        "hexen",
+        "harmony",
+        "strife",
       },
       default = "doom2",
     },

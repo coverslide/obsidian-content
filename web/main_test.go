@@ -382,6 +382,46 @@ func TestJobStatusAndDownload(t *testing.T) {
 	}
 }
 
+func TestDeleteFailedJobRemovesItsArtifactsAndRejectsOtherStatuses(t *testing.T) {
+	s := testServer(t, 1)
+	now := time.Now().UTC().Format(time.RFC3339)
+	for _, status := range []string{"failed", "running"} {
+		id := "delete-" + status
+		if _, err := s.db.Exec(`INSERT INTO jobs(id,status,created_at,updated_at,request_json) VALUES(?,?,?,?,?)`, id, status, now, now, validJobJSON()); err != nil {
+			t.Fatal(err)
+		}
+		for _, suffix := range []string{".log", ".wad"} {
+			if err := os.WriteFile(filepath.Join(s.output, id+suffix), []byte("partial output"), 0600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		w := httptest.NewRecorder()
+		s.job(w, httptest.NewRequest(http.MethodDelete, "/api/jobs/"+id, nil))
+		if status == "failed" {
+			if w.Code != http.StatusNoContent {
+				t.Fatalf("failed job delete status=%d body=%s", w.Code, w.Body)
+			}
+			var count int
+			if err := s.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE id=?`, id).Scan(&count); err != nil || count != 0 {
+				t.Fatalf("failed job remains (count=%d err=%v)", count, err)
+			}
+			for _, suffix := range []string{".log", ".wad"} {
+				if _, err := os.Stat(filepath.Join(s.output, id+suffix)); !errors.Is(err, os.ErrNotExist) {
+					t.Errorf("artifact %s still exists or stat failed: %v", suffix, err)
+				}
+			}
+		} else {
+			if w.Code != http.StatusConflict {
+				t.Fatalf("running job delete status=%d body=%s", w.Code, w.Body)
+			}
+			var count int
+			if err := s.db.QueryRow(`SELECT COUNT(*) FROM jobs WHERE id=?`, id).Scan(&count); err != nil || count != 1 {
+				t.Fatalf("running job missing (count=%d err=%v)", count, err)
+			}
+		}
+	}
+}
+
 func TestWADAttachmentFilenameFallsBackAndSanitizesTitle(t *testing.T) {
 	output := t.TempDir()
 	if err := os.WriteFile(filepath.Join(output, "unsafe.log"), []byte("Game title: ../../\"\r\n"), 0600); err != nil {

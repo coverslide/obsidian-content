@@ -102,6 +102,14 @@ end
 
 function SKY_GEN.generate_skies()
 
+  -- Experimental game targets can provide their own sky resources or none at
+  -- all.  Do not try to clone the Doom-specific sky tables when they are
+  -- absent.
+  if not GAME.RESOURCES or not GAME.RESOURCES.SKY_GEN_THEMES then
+    gui.printf("Sky generator skipped: no sky generation resources for this game.\n")
+    return
+  end
+
   -- select episode for the starry starry night
   local starry_ep = rand.irange(1, # GAME.episodes)
 

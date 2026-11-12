@@ -36,12 +36,23 @@ class ObsidianApp extends CustomElement {
     window.removeEventListener('hashchange', this.routeListener);
   }
 
-  private isHistory() { return location.hash.startsWith('#/runs'); }
+  private runId() {
+    const match = location.hash.match(/^#\/runs\/([^/?#]+)/);
+    if (!match) return;
+    try { return decodeURIComponent(match[1]); } catch { return; }
+  }
+
+  private isHistory() { return location.hash === '#/runs' || location.hash.startsWith('#/runs?'); }
 
   private renderRoute() {
-    if (this.isHistory()) this.renderHistory();
+    if (this.runId()) this.renderRunDetail();
+    else if (this.isHistory()) this.renderHistory();
     else this.renderHome();
     void this.refresh();
+  }
+
+  private renderRunDetail() {
+    this.innerHTML = `<main class="shell history-shell run-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><a class="online" href="#/runs">← ALL RUNS</a></header><section class="history-intro"><p class="eyebrow">RUN DETAILS</p><h2>Generated run</h2><p class="lede">Status, output, settings, and generated files for this run.</p></section><section class="history-panel"><div class="section-title"><span>RUN</span><h3>Run details</h3></div><div id="run-detail"><div class="empty"><p>Loading run…</p></div></div></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/runs">BACK TO RUNS</a></footer></main>`;
   }
 
   private renderHome() {
@@ -103,6 +114,10 @@ class ObsidianApp extends CustomElement {
   }
 
   private async refresh() {
+    if (this.runId()) {
+      await this.refreshRunDetail();
+      return;
+    }
     const host = this.querySelector<HTMLElement>('#jobs');
     if (!host) return;
     try {
@@ -117,6 +132,40 @@ class ObsidianApp extends CustomElement {
       if (this.isHistory()) {
         const next = this.querySelector<HTMLButtonElement>('[data-page="next"]');
         if (next) next.disabled = !hasNext;
+      }
+    } catch { /* The API may still be starting. */ }
+  }
+
+  private async refreshRunDetail() {
+    const id = this.runId();
+    const host = this.querySelector<HTMLElement>('#run-detail');
+    if (!id || !host) return;
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(id)}`);
+      if (response.status === 404) {
+        host.innerHTML = '<p class="option-error">This run was not found. It may have been deleted.</p>';
+        return;
+      }
+      if (!response.ok) return;
+      const job = await response.json() as Job;
+      let card = host.querySelector<HTMLDetailsElement>('.job[data-job-id]');
+      const snapshot = JSON.stringify(job);
+      if (!card) {
+        card = this.createJobCard(job);
+        card.open = true;
+        host.replaceChildren(card);
+        this.updateJobCard(card, job);
+        this.jobSnapshots.set(job.id, snapshot);
+      } else if (this.jobSnapshots.get(job.id) !== snapshot) {
+        this.updateJobCard(card, job);
+        this.jobSnapshots.set(job.id, snapshot);
+      }
+      if (job.status === 'running' || ((job.status === 'failed' || job.status === 'completed') && card.dataset.logLoaded !== 'true')) {
+        const logs = await fetch(`/api/jobs/${encodeURIComponent(job.id)}/logs`);
+        if (logs.ok) {
+          this.appendLog(job.id, await logs.text());
+          card.dataset.logLoaded = 'true';
+        }
       }
     } catch { /* The API may still be starting. */ }
   }
@@ -173,12 +222,10 @@ class ObsidianApp extends CustomElement {
   }
 
   private createJobCard(job:Job) {
-    const card = document.createElement('article');
+    const card = document.createElement('details');
     card.className = 'job';
     card.dataset.jobId = job.id;
-    card.innerHTML = `<div class="job-top"><span class="job-icon"></span><div class="job-info"><strong></strong><small></small></div><span class="status"></span></div><div class="progress"><i></i></div><div class="job-actions"><a class="download">Download WAD <span>↓</span></a><a class="play-test" target="_blank" rel="noopener">Play in UZDoom <span>↗</span></a></div><p class="error"></p><button class="reuse-settings" type="button">Reuse settings</button><details class="job-logs"><summary></summary><a class="full-log" target="_blank" rel="noopener">Open full log <span>↗</span></a><pre></pre></details>`;
-    const details = card.querySelector<HTMLDetailsElement>('.job-logs')!;
-    details.open = job.status === 'running' || job.status === 'failed';
+    card.innerHTML = `<summary class="job-top"><span class="job-icon"></span><div class="job-info"><strong></strong><small></small></div><span class="status"></span><span class="job-chevron" aria-hidden="true">⌄</span></summary><div class="job-content"><div class="progress"><i></i></div><div class="job-actions"><a class="download">Download WAD <span>↓</span></a><a class="play-test" target="_blank" rel="noopener">Play in UZDoom <span>↗</span></a></div><div class="run-actions"><a class="run-page">Open run details ↗</a><button class="delete-run" type="button">Delete failed run</button></div><p class="error"></p><details class="run-settings"><summary>Settings used</summary><pre></pre></details><details class="job-logs"><summary></summary><a class="full-log" target="_blank" rel="noopener">Open full log <span>↗</span></a><pre></pre></details></div>`;
     return card;
   }
 
@@ -208,8 +255,17 @@ class ObsidianApp extends CustomElement {
     reuse.onclick = job.settings ? () => this.reuseSettings(job.settings!) : null;
     const details = card.querySelector<HTMLDetailsElement>('.job-logs')!;
     details.hidden = job.status === 'queued' || (job.status === 'completed' && card.dataset.hasLog !== 'true');
+    details.open = job.status === 'running' || job.status === 'failed';
     details.querySelector('summary')!.textContent = job.status === 'running' ? 'Live generator log' : 'Generator log';
     details.querySelector<HTMLAnchorElement>('.full-log')!.href = `/api/jobs/${encodeURIComponent(job.id)}/log`;
+    const runPage = card.querySelector<HTMLAnchorElement>('.run-page')!;
+    runPage.href = `#/runs/${encodeURIComponent(job.id)}`;
+    const remove = card.querySelector<HTMLButtonElement>('.delete-run')!;
+    remove.hidden = job.status !== 'failed';
+    remove.onclick = job.status === 'failed' ? () => void this.deleteFailedRun(job, card, remove) : null;
+    const settings = card.querySelector<HTMLDetailsElement>('.run-settings')!;
+    settings.hidden = !job.settings;
+    settings.querySelector('pre')!.textContent = job.settings ? JSON.stringify(job.settings, null, 2) : '';
     if ((job.status === 'running' || job.status === 'failed') && !this.logContents.has(job.id)) {
       details.querySelector('pre')!.textContent = job.status === 'running' ? 'Waiting for generator output…' : (job.error || 'No log output recorded');
     }
@@ -231,6 +287,25 @@ class ObsidianApp extends CustomElement {
     card.dataset.hasLog = 'true';
     card.querySelector<HTMLDetailsElement>('.job-logs')!.hidden = false;
     pre.scrollTop = pre.scrollHeight;
+  }
+
+  private async deleteFailedRun(job:Job, card:HTMLElement, button:HTMLButtonElement) {
+    if (!window.confirm(`Delete failed run OBSIDIAN-${job.id.slice(-6).toUpperCase()} and its log?`)) return;
+    button.disabled = true;
+    try {
+      const response = await fetch(`/api/jobs/${encodeURIComponent(job.id)}`, { method:'DELETE' });
+      if (!response.ok) throw new Error(await response.text());
+      this.jobSnapshots.delete(job.id);
+      this.logContents.delete(job.id);
+      if (this.runId() === job.id) location.hash = '#/runs';
+      else {
+        card.remove();
+        await this.refresh();
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not delete failed run');
+      button.disabled = false;
+    }
   }
 
   private reuseSettings(settings:JobSettings) {

@@ -16,3 +16,74 @@
 .full-log:hover {
   text-decoration: underline;
 }
+
+.job > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.job > summary::-webkit-details-marker {
+  display: none;
+}
+
+.job-chevron {
+  margin-left: 10px;
+  color: #788173;
+  transition: transform 120ms ease;
+}
+
+.job[open] > summary .job-chevron {
+  transform: rotate(180deg);
+}
+
+.job-content {
+  padding-top: 10px;
+}
+
+.run-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0 42px;
+}
+
+.run-page {
+  color: #aaca79;
+  font: 9px 'DM Mono';
+  text-decoration: none;
+}
+
+.run-page:hover {
+  text-decoration: underline;
+}
+
+.delete-run {
+  margin-left: auto;
+  border-color: #70443a;
+  color: #dc8e7b;
+}
+
+.run-settings {
+  margin: 10px 0 0 42px;
+  border: 1px solid #303a2e;
+  border-radius: 4px;
+  background: #121712;
+}
+
+.run-settings summary {
+  padding: 8px 10px;
+  color: #b5c59e;
+  font: 9px 'DM Mono';
+  cursor: pointer;
+}
+
+.run-settings pre {
+  max-height: 300px;
+  overflow: auto;
+  margin: 0;
+  padding: 9px 10px;
+  border-top: 1px solid #303a2e;
+  color: #bbc4b1;
+  font: 10px/1.5 'DM Mono', monospace;
+  white-space: pre;
+}

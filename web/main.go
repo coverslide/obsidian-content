@@ -218,7 +218,7 @@ func (s *Server) jobs(w http.ResponseWriter, r *http.Request) {
 	jsonOut(w, Job{ID: id, Status: "queued", CreatedAt: now, UpdatedAt: now})
 }
 func (s *Server) job(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodDelete {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -242,6 +242,32 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 	var settings CreateJob
 	if json.Unmarshal([]byte(raw), &settings) == nil {
 		j.Settings = &settings
+	}
+	if len(parts) == 1 && r.Method == http.MethodDelete {
+		if j.Status != "failed" {
+			http.Error(w, "only failed jobs can be deleted", http.StatusConflict)
+			return
+		}
+		result, err := s.db.Exec(`DELETE FROM jobs WHERE id=? AND status='failed'`, id)
+		if err != nil {
+			http.Error(w, "could not delete job", http.StatusInternalServerError)
+			return
+		}
+		if count, err := result.RowsAffected(); err != nil || count != 1 {
+			http.Error(w, "job changed before it could be deleted", http.StatusConflict)
+			return
+		}
+		for _, suffix := range []string{".log", ".wad"} {
+			if err := os.Remove(filepath.Join(s.output, id+suffix)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				log.Printf("remove failed job artifact %s: %v", id+suffix, err)
+			}
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
 	}
 	if len(parts) == 2 && parts[1] == "download" {
 		if j.Status != "completed" {
