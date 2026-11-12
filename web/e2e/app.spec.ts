@@ -127,12 +127,16 @@ test('adds persisted dual-stick controls only in a touch browser', async ({ brow
     }).ObsidianTouchControls;
     const controls = api.install({ windowRef: window, documentRef: document, canvas });
     (window as unknown as { touchKeys: string[] }).touchKeys = [];
+    (window as unknown as { touchKeyValues: string[] }).touchKeyValues = [];
     canvas.addEventListener('keydown', (event) => (window as unknown as { touchKeys: string[] }).touchKeys.push(`down:${(event as KeyboardEvent).code}`));
     canvas.addEventListener('keyup', (event) => (window as unknown as { touchKeys: string[] }).touchKeys.push(`up:${(event as KeyboardEvent).code}`));
+    canvas.addEventListener('keydown', (event) => (window as unknown as { touchKeyValues: string[] }).touchKeyValues.push(`${(event as KeyboardEvent).code}:${(event as KeyboardEvent).key}`));
     controls?.show();
   });
   await expect(touchPage.getByRole('application', { name: 'Move stick' })).toBeVisible();
   await expect(touchPage.getByRole('application', { name: 'Turn and look stick' })).toBeVisible();
+  expect(await touchPage.locator('#canvas').evaluate((canvas) => getComputedStyle(canvas).userSelect)).toBe('none');
+  expect(await touchPage.locator('#canvas').evaluate((canvas) => getComputedStyle(canvas).touchAction)).toBe('none');
 
   const leftStick = touchPage.locator('.touch-left');
   const bounds = await leftStick.boundingBox();
@@ -143,6 +147,17 @@ test('adds persisted dual-stick controls only in a touch browser', async ({ brow
   expect(await touchPage.evaluate(() => (window as unknown as { touchKeys: string[] }).touchKeys)).toContain('down:KeyW');
   await leftStick.dispatchEvent('pointerup', { ...pointer, clientY: pointer.clientY - 45 });
   expect(await touchPage.evaluate(() => (window as unknown as { touchKeys: string[] }).touchKeys)).toContain('up:KeyW');
+
+  const rightStick = touchPage.locator('.touch-right');
+  const rightBounds = await rightStick.boundingBox();
+  expect(rightBounds).not.toBeNull();
+  const rightCenter = { pointerId: 8, pointerType: 'touch', clientX: rightBounds!.x + rightBounds!.width / 2, clientY: rightBounds!.y + rightBounds!.height / 2 };
+  await rightStick.dispatchEvent('pointerdown', { ...rightCenter, clientX: rightCenter.clientX - 45 });
+  expect(await touchPage.evaluate(() => (window as unknown as { touchKeyValues: string[] }).touchKeyValues)).toContain('ArrowLeft:ArrowLeft');
+  await rightStick.dispatchEvent('pointerup', { ...rightCenter, clientX: rightCenter.clientX - 45 });
+  await rightStick.dispatchEvent('pointerdown', { ...rightCenter, clientY: rightCenter.clientY - 45 });
+  expect(await touchPage.evaluate(() => (window as unknown as { touchKeyValues: string[] }).touchKeyValues)).toContain('PageUp:PageUp');
+  await rightStick.dispatchEvent('pointerup', { ...rightCenter, clientY: rightCenter.clientY - 45 });
 
   await touchPage.getByRole('button', { name: 'Touch control settings' }).click();
   await touchPage.locator('[data-setting="opacity"]').evaluate((node) => {

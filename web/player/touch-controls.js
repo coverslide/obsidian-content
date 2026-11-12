@@ -70,6 +70,7 @@
       </div>`;
     const style = documentRef.createElement('style');
     style.textContent = `
+      html,body,canvas{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
       .obsidian-touch-controls{--touch-scale:${settings.size};--touch-opacity:${settings.opacity};position:fixed;inset:0;z-index:2147483000;pointer-events:none;opacity:0;visibility:hidden;transition:opacity .15s ease;font:600 11px system-ui,sans-serif;color:white;user-select:none;-webkit-user-select:none}
       .obsidian-touch-controls.active{opacity:1;visibility:visible}
       .obsidian-touch-controls *{box-sizing:border-box}
@@ -94,7 +95,7 @@
       if (down === heldKeys.has(code)) return;
       if (down) heldKeys.add(code); else heldKeys.delete(code);
       const key = code.startsWith('Key') ? code.slice(3).toLowerCase()
-        : code.startsWith('Arrow') ? code.slice(5)
+        : code.startsWith('Arrow') ? code
           : code === 'ControlLeft' ? 'Control' : code === 'ShiftLeft' ? 'Shift'
             : code === 'Space' ? ' ' : code === 'PageUp' ? 'PageUp'
               : code === 'BracketLeft' ? '[' : code === 'BracketRight' ? ']'
