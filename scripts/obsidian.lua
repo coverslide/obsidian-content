@@ -2226,6 +2226,7 @@ local function ob_get_module_refs()
         "tnt",
         "plutonia",
         "heretic",
+        "chex3",
         "hexen",
         "harmony",
         "strife",

@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RESTORED_GAMES = ("chex3", "harmony", "hexen", "nukem", "quake", "strife")
-GENERATION_TARGETS = ("doom2", "hexen", "harmony", "strife")
+GENERATION_TARGETS = ("doom2", "chex3", "hexen", "harmony", "strife")
 RESTORED_GENERATION_TARGETS = ("hexen", "harmony", "strife")
 KNOWN_GENERATION_LIMITATIONS = {
     "hexen": "missing prefabs bucket: seeds_stairs",
