@@ -150,7 +150,7 @@ test('selects the local IWAD matching each generated game type', async ({ page }
   const mappings:Record<string,string> = {
     doom1:'doom.wad', ultdoom:'doom.wad', doom2:'doom2.wad',
     tnt:'tnt.wad', plutonia:'plutonia.wad', heretic:'heretic.wad',
-    hexen:'hexen.wad', strife:'strife1.wad', hacx:'hacx.wad', chex3:'chex3.wad',
+    hexen:'hexen.wad', strife:'strife1.wad', hacx:'hacx.wad', chex3:'chex3.wad', harmony:'harm1.wad',
   };
   await page.route(jobsEndpoint, (route) => route.fulfill({ json: Object.entries(mappings).map(([game], index) => ({
     id: `iwad-${index}`, status: 'completed', createdAt: '2026-01-02T03:04:05Z', file: `/api/jobs/iwad-${index}/download`,
@@ -164,6 +164,35 @@ test('selects the local IWAD matching each generated game type', async ({ page }
     expect(new URL(href!, 'http://localhost').searchParams.get('iwad'), game).toBe(iwad);
     await expect(card.locator('.play-test')).toBeVisible();
   }
+});
+
+test('launch page opens the selected local IWAD, including Harmony', async ({ page }) => {
+  await page.goto('/#/launch');
+  await expect(page.getByRole('heading', { name: 'Launch a game' })).toBeVisible();
+  await expect(page.locator('#launch-iwad')).toHaveValue('doom2.wad');
+  await page.locator('#launch-iwad').selectOption('harm1.wad');
+  await expect(page).toHaveURL(/#\/launch\?iwad=harm1\.wad$/);
+  const launch = page.getByRole('link', { name: /Launch UZDoom/ });
+  await expect(launch).toHaveAttribute('href', '/play/?iwad=harm1.wad');
+  await expect(launch).toHaveAttribute('target', '_blank');
+  await page.locator('#launch-iwad').selectOption('hexdd.wad');
+  const hexenLaunch = page.getByRole('link', { name: /Launch UZDoom/ });
+  const hexenUrl = new URL((await hexenLaunch.getAttribute('href'))!, 'http://localhost');
+  expect(hexenUrl.searchParams.get('iwad')).toBe('hexen.wad');
+  expect(hexenUrl.searchParams.get('modurl')).toBe('/play/private/hexdd.wad');
+});
+
+test('keeps non-WAD targets in backend references but hides them from the web builder', async ({ page }) => {
+  const reference = structuredClone(optionReference);
+  reference.main_build_settings.game.values.push('wolf', 'spear', 'nukem');
+  await page.route('**/api/options', (route) => route.fulfill({ json: reference }));
+  await page.route(jobsEndpoint, (route) => route.fulfill({ json: [] }));
+  await page.goto('/');
+
+  const games = page.locator('[name="core.game"] option');
+  await expect(games).toHaveCount(2);
+  expect(await games.allTextContents()).toEqual(['doom1', 'doom2']);
+  expect(reference.main_build_settings.game.values).toEqual(['doom1', 'doom2', 'wolf', 'spear', 'nukem']);
 });
 
 test('shows a failed generation message without rendering it as HTML', async ({ page }) => {

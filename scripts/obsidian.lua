@@ -54,6 +54,9 @@ gui.import("random_words_en_m.lua")
 
 gui.set_import_dir("")
 
+-- The legacy Wolfenstein target uses its own 0.94 planner and map writer.
+gui.import("094/oblige_v094.lua")
+
 function ob_ref_table(op, t)
   if not gui.___REFS then
     gui.___REFS = {}
@@ -2079,9 +2082,14 @@ function ob_build_setup()
     RANDOMIZE_GROUPS = gui.get_batch_randomize_groups()
   end
 
-  Naming_init(GAME.NAMES)
+  if OB_CONFIG.game ~= "wolf" and OB_CONFIG.game ~= "spear" then
+    Naming_init(GAME.NAMES)
+  end
 
   ob_invoke_hook("setup")
+  if OB_CONFIG.game == "wolf" or OB_CONFIG.game == "spear" then
+    ob_invoke_hook("factory_setup")
+  end
 
   Fab_load_all_definitions()
 
@@ -2230,6 +2238,9 @@ local function ob_get_module_refs()
         "hexen",
         "harmony",
         "strife",
+        "wolf",
+        "spear",
+        "nukem",
       },
       default = "doom2",
     },
@@ -2480,6 +2491,13 @@ function ob_build_cool_shit()
   gui.ticker()
 
   ob_build_setup()
+
+  if ob_game_format() == "wolf3d" then
+    gui.minimap_disable(gui.gettext("id Tech 0"))
+    local result = v094_build_wolf3d_shit()
+    ob_clean_up()
+    return result
+  end
 
   if PARAM["bool_save_gif"] == 1 then
     -- Set frame delay based on how detailed the live minimap is - Dasho

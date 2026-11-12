@@ -13,8 +13,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-RESTORED_GAMES = ("chex3", "harmony", "hexen", "nukem", "quake", "strife")
+RESTORED_GAMES = ("chex3", "harmony", "hexen", "nukem", "quake", "strife", "wolf")
 GENERATION_TARGETS = ("doom2", "chex3", "hexen", "harmony", "strife")
+BACKEND_TARGETS = ("wolf", "spear", "nukem")
+WOLF_GENERATION_TARGETS = {"wolf": "WL6", "spear": "SOD"}
 RESTORED_GENERATION_TARGETS = ("hexen", "harmony", "strife")
 KNOWN_GENERATION_LIMITATIONS = {
     "hexen": "missing prefabs bucket: seeds_stairs",
@@ -122,6 +124,9 @@ def main() -> int:
     for game in GENERATION_TARGETS:
         if game not in game_choices:
             fail(f"restored generation target {game!r} is missing from main build settings")
+    for game in BACKEND_TARGETS:
+        if game not in game_choices:
+            fail(f"backend target {game!r} is missing from main build settings")
 
     with tempfile.TemporaryDirectory(prefix="obsidian-generator-home-") as home, tempfile.TemporaryDirectory(
         prefix="obsidian-generator-smoke-"
@@ -165,6 +170,41 @@ def main() -> int:
 
         if failures:
             fail("restored generation targets failed:\n\n" + "\n\n".join(failures))
+
+    with tempfile.TemporaryDirectory(prefix="obsidian-generator-home-") as home, tempfile.TemporaryDirectory(
+        prefix="obsidian-wolf-smoke-"
+    ) as temp:
+        test_env = os.environ.copy()
+        test_env["HOME"] = home
+        test_env["XDG_DATA_HOME"] = str(Path(home) / ".local" / "share")
+        prepare_home(test_env)
+        output_dir = Path(temp)
+        for game, extension in WOLF_GENERATION_TARGETS.items():
+            result = run(
+                binary,
+                "--batch",
+                str(output_dir / f"{game}.map"),
+                f"game={game}",
+                "port=boom",
+                "length=single",
+                f"seed=restored-smoke-{game}",
+                env=test_env,
+            )
+            maps = output_dir / f"GAMEMAPS.{extension}"
+            header = output_dir / f"MAPHEAD.{extension}"
+            if result.returncode != 0 or not maps.is_file() or not header.is_file():
+                fail(
+                    f"{game}: Wolf-format map generation failed"
+                    + f"\nOutput files: {[path.name for path in output_dir.iterdir()]}"
+                    + generator_log(test_env),
+                    result,
+                )
+            header_data = header.read_bytes()
+            if len(header_data) < 6 or header_data[:2] != b"\xcd\xab" or int.from_bytes(header_data[2:6], "little") == 0:
+                fail(f"{game}: invalid Wolf map header {header}")
+            if maps.stat().st_size <= 64:
+                fail(f"{game}: Wolf map output is unexpectedly small")
+            print(f"PASS {game}: {maps.stat().st_size} bytes, valid MAPHEAD.{extension}")
 
     print(f"PASS startup/reference load: {len(RESTORED_GAMES)} restored game trees")
     return 0

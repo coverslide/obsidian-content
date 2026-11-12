@@ -304,3 +304,58 @@ OB_MODULES["ui_arch"] =
     }
   },
 }
+
+-- Legacy id Tech 0 sizing controls needed by the restored Wolfenstein
+-- planner. These stay in the generator reference but are filtered from the
+-- WAD-only web form.
+UI_ARCH_WOLF_3D = { }
+UI_ARCH_WOLF_3D.ROOM_SIZE_CHOICES =
+{
+  "0.33", _("x0.33"), "0.66", _("x0.66"), "1", _("x1"),
+  "1.33", _("x1.33"), "1.66", _("x1.66"), "mixed", _("Mix It Up")
+}
+
+function UI_ARCH_WOLF_3D.setup(self)
+  module_param_up(self)
+end
+
+OB_MODULES["ui_arch_wolf_3d"] =
+{
+  name = "ui_arch_wolf_3d",
+  label = _("Wolfenstein Architecture"),
+  side = "left",
+  priority = 104,
+  where = "arch",
+  game = { wolf=1, spear=1 },
+  hooks = { setup = UI_ARCH_WOLF_3D.setup },
+  options =
+  {
+    {
+      name = "float_size_wolf_3d", label = _("Level Size"), valuator = "slider",
+      min = 10, max = 75, increment = 1, default = 36,
+      nan = _("Mix It Up,Episodic,Progressive"), randomize_group = "architecture",
+      tooltip = _("Determines the map size in grid squares."), priority = 100,
+    },
+    {
+      name = "float_level_upper_bound_wolf_3d", label = _("Upper Bound"),
+      valuator = "slider", min = 10, max = 75, increment = 1, default = 75, priority = 99,
+    },
+    {
+      name = "float_level_lower_bound_wolf_3d", label = _("Lower Bound"),
+      valuator = "slider", min = 10, max = 75, increment = 1, default = 10, priority = 98,
+    },
+    {
+      name = "level_size_ramp_factor_wolf_3d", label = _("Progressive Size Ramp"),
+      choices = UI_ARCH.RAMP_FACTOR, default = "0.66", priority = 97,
+    },
+    {
+      name = "level_size_bias_wolf_3d", label = _("Random Size Bias"),
+      choices = UI_ARCH.SIZE_BIAS, default = "default", priority = 96,
+    },
+    {
+      name = "room_size_multiplier_wolf_3d", label = _("Room Size Multiplier"),
+      choices = UI_ARCH_WOLF_3D.ROOM_SIZE_CHOICES, default = "1", priority = 95,
+      randomize_group = "architecture",
+    },
+  },
+}

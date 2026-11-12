@@ -113,6 +113,7 @@ set(OBSIDIAN_SOURCE_FILES
     source/dm_prefab.cc
     source/ff_main.cc
     source/g_doom.cc
+    source/g_wolf.cc
     source/lex.yy.c
     source/lib_argv.cc
     source/lib_midi.cc

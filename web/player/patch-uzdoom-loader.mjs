@@ -16,7 +16,7 @@ const patches = [
     '    const fileStr = params.get(\'file\');',
     `    const modURL = params.get('modurl');
     // Only fetch this app's own completed-job download route.
-    if (modURL && /^\\/api\\/jobs\\/\\d+\\/download$/.test(modURL)) out.modURL = modURL;
+    if (modURL && (/^\\/api\\/jobs\\/\\d+\\/download$/.test(modURL) || modURL === '/play/private/hexdd.wad')) out.modURL = modURL;
     const fileStr = params.get('file');`,
   ],
   [
@@ -42,6 +42,7 @@ const patches = [
     'strife1.wad': '/play/private/strife1.wad',
     'hacx.wad': '/play/private/HACX.WAD',
     'chex3.wad': '/play/private/chex3.wad',
+    'harm1.wad': '/play/private/harm1.wad',
   };`,
   ],
   [

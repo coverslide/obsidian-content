@@ -11,8 +11,21 @@ const historyPageSize = 20;
 const previewIWADs:Record<string,string> = {
   doom1:'doom.wad', ultdoom:'doom.wad', doom2:'doom2.wad',
   tnt:'tnt.wad', plutonia:'plutonia.wad', heretic:'heretic.wad',
-  hexen:'hexen.wad', strife:'strife1.wad', hacx:'hacx.wad', chex3:'chex3.wad',
+  hexen:'hexen.wad', strife:'strife1.wad', hacx:'hacx.wad', chex3:'chex3.wad', harmony:'harm1.wad',
 };
+const availableIWADs = [
+  ['doom.wad', 'The Ultimate DOOM'], ['doom2.wad', 'DOOM II'], ['tnt.wad', 'Final DOOM: TNT'],
+  ['plutonia.wad', 'Final DOOM: Plutonia'], ['heretic.wad', 'Heretic'], ['hexen.wad', 'Hexen'],
+  ['strife1.wad', 'Strife'], ['hacx.wad', 'Hacx'], ['chex3.wad', 'Chex Quest 3'],
+  ['harm1.wad', 'Harmony'], ['hexdd.wad', 'Hexen: Deathkings'], ['freedoom.wad', 'Freedoom'], ['freedoom1.wad', 'Freedoom: Phase 1'],
+  ['freedoom2.wad', 'Freedoom: Phase 2'], ['freedm.wad', 'FreeDM'],
+];
+
+function launchHref(file:string) {
+  const params = new URLSearchParams({ iwad: file === 'hexdd.wad' ? 'hexen.wad' : file });
+  if (file === 'hexdd.wad') params.set('modurl', '/play/private/hexdd.wad');
+  return `/play/?${params.toString()}`;
+}
 
 class ObsidianApp extends CustomElement {
   static localName = 'app';
@@ -47,16 +60,28 @@ class ObsidianApp extends CustomElement {
   private renderRoute() {
     if (this.runId()) this.renderRunDetail();
     else if (this.isHistory()) this.renderHistory();
+    else if (location.hash === '#/launch' || location.hash.startsWith('#/launch?')) this.renderLauncher();
     else this.renderHome();
     void this.refresh();
   }
 
   private renderRunDetail() {
-    this.innerHTML = `<main class="shell history-shell run-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><a class="online" href="#/runs">← ALL RUNS</a></header><section class="history-intro"><p class="eyebrow">RUN DETAILS</p><h2>Generated run</h2><p class="lede">Status, output, settings, and generated files for this run.</p></section><section class="history-panel"><div class="section-title"><span>RUN</span><h3>Run details</h3></div><div id="run-detail"><div class="empty"><p>Loading run…</p></div></div></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/runs">BACK TO RUNS</a></footer></main>`;
+    this.innerHTML = `<main class="shell history-shell run-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><a class="online" href="#/runs">← ALL RUNS</a></nav></header><section class="history-intro"><p class="eyebrow">RUN DETAILS</p><h2>Generated run</h2><p class="lede">Status, output, settings, and generated files for this run.</p></section><section class="history-panel"><div class="section-title"><span>RUN</span><h3>Run details</h3></div><div id="run-detail"><div class="empty"><p>Loading run…</p></div></div></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/runs">BACK TO RUNS</a></footer></main>`;
+  }
+
+  private renderLauncher() {
+    const selected = new URLSearchParams(location.hash.split('?')[1] ?? '').get('iwad') ?? 'doom2.wad';
+    this.innerHTML = `<main class="shell history-shell launcher-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/">← BUILDER</a><a class="online" href="#/runs">RUN HISTORY</a></nav></header><section class="history-intro"><p class="eyebrow">UZDOOM PLAYER</p><h2>Launch a game</h2><p class="lede">Choose an IWAD mounted on this server and open the self-hosted UZDoom player.</p></section><section class="history-panel launch-panel"><div class="section-title"><span>01</span><h3>Game data</h3></div><label for="launch-iwad">SELECT GAME DATA</label><select id="launch-iwad">${availableIWADs.map(([file,label]) => `<option value="${file}" ${file === selected ? 'selected' : ''}>${label} · ${file}</option>`).join('')}</select><p class="form-note launch-note">Harmony uses harm1.wad. Hexen: Deathkings loads hexdd.wad with hexen.wad. The WAD files stay on the server; they are not embedded in the app image.</p><a class="build launch-button" id="launch-game" href="${launchHref(selected)}" target="_blank" rel="noopener"><span>Launch UZDoom</span><span>↗</span></a></section><footer><span>SELF-HOSTED UZDOOM · LOCAL IWAD STORAGE</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
+    const select = this.querySelector<HTMLSelectElement>('#launch-iwad')!;
+    const link = this.querySelector<HTMLAnchorElement>('#launch-game')!;
+    select.addEventListener('change', () => {
+      link.href = launchHref(select.value);
+      location.hash = `#/launch?iwad=${encodeURIComponent(select.value)}`;
+    });
   }
 
   private renderHome() {
-    this.innerHTML = `<main class="shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><span class="online"><i></i> GENERATOR READY</span></header><section class="intro"><p class="eyebrow">PROCEDURAL WORLD BUILDER</p><h2>Build a world.<br><em>Make it yours.</em></h2><p class="lede">Choose from Obsidian's complete option reference and forge a playable WAD.</p></section><section class="workspace"><form id="build-form"><div class="section-title"><span>01</span><h3>Build settings</h3></div><label>SEED <span class="optional">OPTIONAL</span><input name="seed" maxlength="80" placeholder="Random seed" autocomplete="off"></label><div id="option-groups"><p class="loading-options">Loading all available Obsidian settings…</p></div><button class="build" type="submit"><span>Generate WAD</span><span>↗</span></button><p class="form-note">Your latest settings save on this device and with each run.</p></form><aside><div class="section-title"><span>02</span><h3>Recent runs</h3><a class="live" href="#/runs">VIEW ALL RUNS →</a></div><div id="jobs" class="jobs"><div class="empty"><span>✳</span><p>No runs yet</p><small>Your generated worlds will appear here.</small></div></div><div class="queue-footer"><span class="pulse"></span> AUTO-REFRESHING</div></aside></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><span>WAD OUTPUT · DOOM ENGINE</span></footer></main>`;
+    this.innerHTML = `<main class="shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><span class="online"><i></i> GENERATOR READY</span></nav></header><section class="intro"><p class="eyebrow">PROCEDURAL WORLD BUILDER</p><h2>Build a world.<br><em>Make it yours.</em></h2><p class="lede">Choose from Obsidian's complete option reference and forge a playable WAD.</p></section><section class="workspace"><form id="build-form"><div class="section-title"><span>01</span><h3>Build settings</h3></div><label>SEED <span class="optional">OPTIONAL</span><input name="seed" maxlength="80" placeholder="Random seed" autocomplete="off"></label><div id="option-groups"><p class="loading-options">Loading all available Obsidian settings…</p></div><button class="build" type="submit"><span>Generate WAD</span><span>↗</span></button><p class="form-note">Your latest settings save on this device and with each run.</p></form><aside><div class="section-title"><span>02</span><h3>Recent runs</h3><a class="live" href="#/runs">VIEW ALL RUNS →</a></div><div id="jobs" class="jobs"><div class="empty"><span>✳</span><p>No runs yet</p><small>Your generated worlds will appear here.</small></div></div><div class="queue-footer"><span class="pulse"></span> AUTO-REFRESHING</div></aside></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><span>WAD OUTPUT · DOOM ENGINE</span></footer></main>`;
     const form = this.querySelector<HTMLFormElement>('#build-form')!;
     form.addEventListener('submit', event => void this.submit(event as SubmitEvent));
     form.addEventListener('input', () => this.saveSettings(form));
@@ -67,7 +92,7 @@ class ObsidianApp extends CustomElement {
   private renderHistory() {
     const query = new URLSearchParams(location.hash.split('?')[1] ?? '');
     this.page = Math.max(1, Number(query.get('page')) || 1);
-    this.innerHTML = `<main class="shell history-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><a class="online" href="#/">← NEW RUN</a></header><section class="history-intro"><p class="eyebrow">RUN ARCHIVE</p><h2>Past runs</h2><p class="lede">Browse generated worlds and reuse any run's settings.</p></section><section class="history-panel"><div class="section-title"><span>02</span><h3>All runs</h3><span class="live">PAGE ${this.page}</span></div><div id="jobs" class="jobs"><div class="empty"><span>✳</span><p>Loading runs…</p></div></div><nav class="pagination" aria-label="Run history pages"><button type="button" data-page="previous" ${this.page <= 1 ? 'disabled' : ''}>← Previous</button><span>Page ${this.page}</span><button type="button" data-page="next">Next →</button></nav></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
+    this.innerHTML = `<main class="shell history-shell"><header><a class="brand home-link" href="#/"><span class="sigil">O</span><span><p class="eyebrow">OBSIDIAN LEVEL MAKER</p><h1>Level Forge</h1></span></a><nav class="top-links"><a class="online" href="#/launch">PLAY DOOM</a><a class="online" href="#/">← NEW RUN</a></nav></header><section class="history-intro"><p class="eyebrow">RUN ARCHIVE</p><h2>Past runs</h2><p class="lede">Browse generated worlds and reuse any run's settings.</p></section><section class="history-panel"><div class="section-title"><span>02</span><h3>All runs</h3><span class="live">PAGE ${this.page}</span></div><div id="jobs" class="jobs"><div class="empty"><span>✳</span><p>Loading runs…</p></div></div><nav class="pagination" aria-label="Run history pages"><button type="button" data-page="previous" ${this.page <= 1 ? 'disabled' : ''}>← Previous</button><span>Page ${this.page}</span><button type="button" data-page="next">Next →</button></nav></section><footer><span>OBSIDIAN · PROCEDURAL WORLD GENERATOR</span><a href="#/">BACK TO BUILDER</a></footer></main>`;
     this.querySelector<HTMLButtonElement>('[data-page="previous"]')?.addEventListener('click', () => this.goToPage(this.page - 1));
     this.querySelector<HTMLButtonElement>('[data-page="next"]')?.addEventListener('click', () => this.goToPage(this.page + 1));
   }
@@ -84,7 +109,12 @@ class ObsidianApp extends CustomElement {
       this.reference = await response.json() as OptionReference;
       const groups = this.querySelector<HTMLElement>('#option-groups');
       if (!groups) return;
-      groups.innerHTML = Object.entries(this.reference).map(([name, options]) => `<details class="option-group" ${name === 'main_build_settings' ? 'open' : ''}><summary>${escapeHTML(name.replaceAll('_', ' '))}<span>${Object.keys(options).length} OPTIONS</span></summary><div class="option-fields">${Object.entries(options).map(([key, definition]) => optionFieldHTML(name, key, definition)).join('')}</div></details>`).join('');
+      groups.innerHTML = Object.entries(this.reference).map(([name, options]) => `<details class="option-group" ${name === 'main_build_settings' ? 'open' : ''}><summary>${escapeHTML(name.replaceAll('_', ' '))}<span>${Object.keys(options).length} OPTIONS</span></summary><div class="option-fields">${Object.entries(options).map(([key, definition]) => {
+        if (name === 'main_build_settings' && key === 'game' && Array.isArray(definition.values)) {
+          definition = { ...definition, values: definition.values.filter(value => !['wolf', 'spear', 'nukem'].includes(String(value))) };
+        }
+        return optionFieldHTML(name, key, definition);
+      }).join('')}</div></details>`).join('');
       const settings = this.loadSettings();
       if (settings) this.applySettings(settings, false);
     } catch (error) {

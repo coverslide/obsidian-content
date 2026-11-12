@@ -906,6 +906,10 @@ bool Build_Cool_Shit()
         {
             game_object = Doom_GameObject();
         }
+        else if (StringCompare(format, "wolf3d") == 0)
+        {
+            game_object = Wolf_GameObject();
+        }
         else
         {
             FatalError("ERROR: unknown format: '%s'\n", format.c_str());
@@ -937,7 +941,20 @@ bool Build_Cool_Shit()
     const uint32_t start_time = TimeGetMillies();
     bool           was_ok     = false;
     // this will ask for output filename (among other things)
-    was_ok = game_object->Start(def_filename.c_str());
+    if (StringCompare(format, "wolf3d") == 0)
+    {
+        const std::string current_game = ob_get_param("game");
+        if (current_game == "wolf")
+            was_ok = game_object->Start("WL6");
+        else if (current_game == "spear")
+            was_ok = game_object->Start("SOD");
+        else
+            FatalError("ERROR: unsupported Wolfenstein target: '%s'\n", current_game.c_str());
+    }
+    else
+    {
+        was_ok = game_object->Start(def_filename.c_str());
+    }
 
 #ifndef OBSIDIAN_CONSOLE_ONLY
     // coerce FLTK to redraw the main window
