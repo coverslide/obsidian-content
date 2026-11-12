@@ -246,22 +246,36 @@ test('selects the local IWAD matching each generated game type', async ({ page }
 test('launch page opens the selected local IWAD, including Harmony', async ({ page }) => {
   await page.route('**/play/private/available-wads/catalog.json', (route) => route.fulfill({ json: [
     { title: 'No Rest for the Living', iwad: 'doom2.wad', files: ['nerve.wad'], description: 'Steam copy' },
+    { title: 'Scythe X', iwad: 'doom2.wad', files: ['scythex.wad'], description: 'Episodes 1 and 2' },
   ] }));
   await page.goto('/#/launch');
   await expect(page.getByRole('heading', { name: 'Ready to play' })).toBeVisible();
   await expect(page.locator('#launch-iwad')).toHaveValue('doom2.wad');
   await expect(page.getByRole('heading', { name: 'Included WADs' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'No Rest for the Living' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add to preload' }).first().click();
+  await expect(page.locator('#preload-order')).toContainText('nerve.wad');
+  await expect(page.getByRole('link', { name: /Launch UZDoom/ })).toHaveAttribute('href', /modurl=.*nerve\.wad/);
+  await page.getByRole('button', { name: 'Add to preload' }).click();
+  await expect(page.locator('#preload-order')).toContainText('scythex.wad');
+  const preloadRows = page.locator('#preload-order li');
+  await expect(preloadRows.nth(0)).toContainText('nerve.wad');
+  await expect(preloadRows.nth(1)).toContainText('scythex.wad');
+  await preloadRows.nth(1).getByRole('button', { name: 'Move scythex.wad up' }).click();
+  await expect(preloadRows.nth(0)).toContainText('scythex.wad');
+  await expect(page.getByRole('link', { name: /Launch UZDoom/ })).toHaveAttribute('href', /modurl=.*scythex\.wad.*modurl=.*nerve\.wad/);
+  await preloadRows.nth(0).getByRole('button', { name: 'Remove scythex.wad' }).click();
+  await expect(page.locator('#preload-order')).not.toContainText('scythex.wad');
   await page.locator('#launch-iwad').selectOption('harm1.wad');
-  await expect(page).toHaveURL(/#\/launch\?iwad=harm1\.wad$/);
+  await expect(page).toHaveURL(/#\/launch\?iwad=harm1\.wad&modurl=/);
   const launch = page.getByRole('link', { name: /Launch UZDoom/ });
-  await expect(launch).toHaveAttribute('href', '/play/?iwad=harm1.wad');
+  await expect(launch).toHaveAttribute('href', /\/play\/\?iwad=harm1\.wad&modurl=.*nerve\.wad/);
   await expect(launch).toHaveAttribute('target', '_blank');
   await page.locator('#launch-iwad').selectOption('hexdd.wad');
   const hexenLaunch = page.getByRole('link', { name: /Launch UZDoom/ });
   const hexenUrl = new URL((await hexenLaunch.getAttribute('href'))!, 'http://localhost');
   expect(hexenUrl.searchParams.get('iwad')).toBe('hexen.wad');
-  expect(hexenUrl.searchParams.get('modurl')).toBe('/play/private/hexdd.wad');
+  expect(hexenUrl.searchParams.getAll('modurl')).toEqual(['/play/private/hexdd.wad', '/play/private/available-wads/nerve.wad']);
 });
 
 test('keeps non-WAD targets in backend references but hides them from the web builder', async ({ page }) => {
