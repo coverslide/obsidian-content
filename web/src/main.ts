@@ -1,6 +1,7 @@
 import CustomElement from '@coverslide/customelement';
 import { escapeHTML, jobPayload, optionFieldHTML, type OptionReference } from './options';
 import './style.css';
+import './api-error.css';
 import './log-tail.css';
 
 type JobSettings = { game:string; port:string; theme:string; length:string; seed:string; options:Record<string,string> };
@@ -197,7 +198,10 @@ class ObsidianApp extends CustomElement {
       const limit = this.isHistory() ? historyPageSize + 1 : recentLimit;
       const offset = this.isHistory() ? (this.page - 1) * historyPageSize : 0;
       const response = await fetch(`/api/jobs?limit=${limit}&offset=${offset}`);
-      if (!response.ok) return;
+      if (!response.ok) {
+        const body = await response.text();
+        throw new Error(`Runs API returned ${response.status}${body ? `: ${body}` : ''}`);
+      }
       const returned = await response.json() as Job[];
       const hasNext = this.isHistory() && returned.length > historyPageSize;
       const jobs = this.isHistory() ? returned.slice(0, historyPageSize) : returned;
@@ -206,7 +210,11 @@ class ObsidianApp extends CustomElement {
         const next = this.querySelector<HTMLButtonElement>('[data-page="next"]');
         if (next) next.disabled = !hasNext;
       }
-    } catch { /* The API may still be starting. */ }
+    } catch (error) {
+      console.error('Failed to load runs from /api/jobs', error);
+      const message = error instanceof Error ? error.message : String(error);
+      host.innerHTML = `<div class="api-error" role="alert"><strong>Could not load runs</strong><p>${escapeHTML(message)}</p><small>Check the server connection and retry.</small></div>`;
+    }
   }
 
   private async refreshRunDetail() {
@@ -298,7 +306,7 @@ class ObsidianApp extends CustomElement {
     const card = document.createElement('details');
     card.className = 'job';
     card.dataset.jobId = job.id;
-    card.innerHTML = `<summary class="job-top"><span class="job-icon"></span><div class="job-info"><strong></strong><small></small></div><span class="status"></span><span class="job-chevron" aria-hidden="true">⌄</span></summary><div class="job-content"><div class="progress"><i></i></div><div class="job-actions"><a class="download">Download WAD <span>↓</span></a><a class="play-test" target="_blank" rel="noopener">Play in UZDoom <span>↗</span></a></div><div class="run-actions"><a class="run-page">Open run details ↗</a><button class="delete-run" type="button">Delete failed run</button></div><p class="error"></p><details class="run-settings"><summary>Settings used</summary><pre></pre></details><details class="job-logs"><summary></summary><a class="full-log" target="_blank" rel="noopener">Open full log <span>↗</span></a><pre></pre></details></div>`;
+    card.innerHTML = `<summary class="job-top"><span class="job-icon"></span><div class="job-info"><strong></strong><small></small></div><span class="status"></span><span class="job-chevron" aria-hidden="true">⌄</span></summary><div class="job-content"><div class="progress"><i></i></div><div class="job-actions"><a class="download">Download WAD <span>↓</span></a><a class="play-test" target="_blank" rel="noopener">Play in UZDoom <span>↗</span></a></div><div class="run-actions"><a class="run-page">Open run details ↗</a><button class="reuse-settings" type="button">Reuse settings</button><button class="delete-run" type="button">Delete failed run</button></div><p class="error"></p><details class="run-settings"><summary>Settings used</summary><pre></pre></details><details class="job-logs"><summary></summary><a class="full-log" target="_blank" rel="noopener">Open full log <span>↗</span></a><pre></pre></details></div>`;
     return card;
   }
 
