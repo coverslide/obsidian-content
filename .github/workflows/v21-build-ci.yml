@@ -9,23 +9,12 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            cpp_compiler: clang++
-            c_compiler: clang
-          - os: windows-latest
-            cpp_compiler: cl
-            c_compiler: cl
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Linux dependencies (FLTK/X11/fontconfig)
-        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -48,8 +37,8 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_CXX_STANDARD=17
           -DCMAKE_CXX_STANDARD_REQUIRED=ON
-          -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
-          -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
 
       - name: Build
         shell: bash
@@ -58,7 +47,6 @@ jobs:
           --config Release -j$(nproc)
 
       - name: Locate built binary (Linux)
-        if: runner.os == 'Linux'
         id: binlinux
         shell: bash
         run: |
@@ -69,8 +57,43 @@ jobs:
             echo "path=$found" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Upload artifact (Linux)
+        uses: actions/upload-artifact@v4
+        with:
+          name: obsidian-linux
+          path: ${{ steps.binlinux.outputs.path }}
+          if-no-files-found: error
+
+  build-windows:
+    # Gitea has Linux runners only. Run this leg on GitHub Actions only.
+    if: github.server_url == 'https://github.com'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set build directory
+        id: dirs
+        shell: bash
+        run: echo "build-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
+
+      - name: Configure CMake
+        shell: bash
+        run: >
+          cmake -S "${{ github.workspace }}"
+          -B "${{ steps.dirs.outputs.build-dir }}"
+          -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_CXX_STANDARD=17
+          -DCMAKE_CXX_STANDARD_REQUIRED=ON
+          -DCMAKE_C_COMPILER=cl
+          -DCMAKE_CXX_COMPILER=cl
+
+      - name: Build
+        shell: bash
+        run: >
+          cmake --build "${{ steps.dirs.outputs.build-dir }}"
+          --config Release -j$(nproc)
+
       - name: Locate built binary (Windows)
-        if: runner.os == 'Windows'
         id: binwin
         shell: pwsh
         run: |
@@ -85,16 +108,7 @@ jobs:
           }
           "path=$found" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      - name: Upload artifact (Linux)
-        if: runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
-        with:
-          name: obsidian-linux
-          path: ${{ steps.binlinux.outputs.path }}
-          if-no-files-found: error
-
       - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: obsidian-windows
