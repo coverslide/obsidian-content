@@ -5,7 +5,7 @@ import './api-error.css';
 import './log-tail.css';
 
 type JobSettings = { game:string; port:string; theme:string; length:string; seed:string; options:Record<string,string> };
-type Job = { id:string; status:string; createdAt:string; error?:string; file?:string; settings?:JobSettings };
+type Job = { id:string; status:string; createdAt:string; error?:string; file?:string; title?:string; settings?:JobSettings };
 const lastSettingsKey = 'obsidian-web:last-settings:v1';
 const globalOptionsKey = 'obsidian-web:global-options:v1';
 type GlobalOptions = { touchControls:'auto'|'on'|'off'; size:number; opacity:number };
@@ -405,8 +405,9 @@ class ObsidianApp extends CustomElement {
 
   private updateJobCard(card:HTMLElement, job:Job) {
     card.querySelector<HTMLElement>('.job-icon')!.textContent = job.status === 'completed' ? '✓' : job.status === 'failed' ? '!' : '◌';
-    card.querySelector<HTMLElement>('.job-info strong')!.textContent = `OBSIDIAN-${job.id.slice(-6).toUpperCase()}`;
-    card.querySelector<HTMLElement>('.job-info small')!.textContent = new Date(job.createdAt).toLocaleString();
+    card.querySelector<HTMLElement>('.job-info strong')!.textContent = job.status === 'completed' && job.title ? job.title : `OBSIDIAN-${job.id.slice(-6).toUpperCase()}`;
+    const runMeta = [job.settings?.game && `GAME ${job.settings.game.toUpperCase()}`, job.settings?.length && `LENGTH ${job.settings.length}`, new Date(job.createdAt).toLocaleString()].filter(Boolean);
+    card.querySelector<HTMLElement>('.job-info small')!.textContent = runMeta.join(' · ');
     const status = card.querySelector<HTMLElement>('.status')!;
     status.className = `status ${job.status}`;
     status.textContent = job.status;

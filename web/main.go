@@ -50,6 +50,7 @@ type Job struct {
 	UpdatedAt string     `json:"updatedAt"`
 	Error     string     `json:"error,omitempty"`
 	File      string     `json:"file,omitempty"`
+	Title     string     `json:"title,omitempty"`
 	Settings  *CreateJob `json:"settings,omitempty"`
 }
 
@@ -155,6 +156,7 @@ func (s *Server) jobs(w http.ResponseWriter, r *http.Request) {
 				if j.Status == "completed" {
 					if info, err := os.Stat(filepath.Join(s.output, j.ID+".wad")); err == nil && info.Mode().IsRegular() {
 						j.File = "/api/jobs/" + j.ID + "/download"
+						j.Title = wadTitle(j.ID, s.output)
 					}
 				}
 				list = append(list, j)
@@ -334,24 +336,29 @@ func (s *Server) job(w http.ResponseWriter, r *http.Request) {
 	}
 	if j.Status == "completed" {
 		j.File = "/api/jobs/" + id + "/download"
+		j.Title = wadTitle(id, s.output)
 	}
 	jsonOut(w, j)
 }
 
-func wadAttachmentFilename(id, output string) string {
-	title := ""
+func wadTitle(id, output string) string {
 	file, err := os.Open(filepath.Join(output, id+".log"))
 	if err == nil {
 		scanner := bufio.NewScanner(io.LimitReader(file, 64*1024))
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 			if strings.HasPrefix(line, "Game title:") {
-				title = strings.TrimSpace(strings.TrimPrefix(line, "Game title:"))
-				break
+				_ = file.Close()
+				return strings.TrimSpace(strings.TrimPrefix(line, "Game title:"))
 			}
 		}
 		_ = file.Close()
 	}
+	return ""
+}
+
+func wadAttachmentFilename(id, output string) string {
+	title := wadTitle(id, output)
 
 	var safe []rune
 	for _, char := range title {

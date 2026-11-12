@@ -3,6 +3,7 @@
   {"title":"Ashes 2063: Enriched Edition","iwad":"doom2.wad","files":["Ashes2063Enriched2_23.pk3"],"description":"Episode one of the Ashes series, including Dead Man Walking; requires a GZDoom-family port."},
   {"title":"Ashes: Afterglow","iwad":"doom2.wad","files":["AshesAfterglow1_16.pk3"],"description":"Episode two of the Ashes series; requires a GZDoom-family port."},
   {"title":"Brutal Doom v21","iwad":"doom2.wad","files":["BrutalDoomv21.pk3"],"description":"Brutal Doom gameplay mod, version 21."},
+  {"title":"Doom 64: Retribution","iwad":"doom2.wad","files":["doom64-retribution-v1.5.wad"],"description":"Doom 64 inspired campaign for Doom II, running in a GZDoom-family port."},
   {"title":"Daedalus: Alien Defense","iwad":"doom2.wad","files":["daedalus.wad"],"description":"TeamTNT’s 32-map campaign."},
   {"title":"Eternal Doom","iwad":"doom2.wad","files":["eternall.wad"],"description":"The original Team Eternal megawad."},
   {"title":"Icarus: Alien Vanguard","iwad":"doom2.wad","files":["icarus.wad"],"description":"TeamTNT’s science-fiction campaign."},

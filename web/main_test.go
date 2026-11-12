@@ -259,6 +259,9 @@ func TestJobsPaginationLimitsAndOffsets(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(s.output, "middle.wad"), []byte("PWAD"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(s.output, "middle.log"), []byte("Game title: Middle Title\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	for _, tc := range []struct {
 		query string
 		want  []string
@@ -285,6 +288,9 @@ func TestJobsPaginationLimitsAndOffsets(t *testing.T) {
 			}
 			if jobs[i].ID == "middle" && jobs[i].File != "/api/jobs/middle/download" {
 				t.Errorf("GET %s middle file=%q, want its download URL", tc.query, jobs[i].File)
+			}
+			if jobs[i].ID == "middle" && jobs[i].Title != "Middle Title" {
+				t.Errorf("GET %s middle title=%q, want title from generator log", tc.query, jobs[i].Title)
 			}
 			if jobs[i].ID != "middle" && jobs[i].File != "" {
 				t.Errorf("GET %s %s unexpectedly has download URL %q without a WAD", tc.query, jobs[i].ID, jobs[i].File)
@@ -369,7 +375,7 @@ func TestJobStatusAndDownload(t *testing.T) {
 	}
 	w = httptest.NewRecorder()
 	s.job(w, httptest.NewRequest(http.MethodGet, "/api/jobs/"+id, nil))
-	if !strings.Contains(w.Body.String(), "/download") {
+	if !strings.Contains(w.Body.String(), "/download") || !strings.Contains(w.Body.String(), `"title":"Chaos: Filthy Wind"`) {
 		t.Fatalf("completed job has no download URL: %s", w.Body)
 	}
 	w = httptest.NewRecorder()

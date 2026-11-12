@@ -48,7 +48,7 @@ test('submits selected settings, displays a completed build, and downloads its W
       await route.fulfill({ json: { id: 'job-123', status: 'queued', createdAt: '2026-01-02T03:04:05Z' } });
       return;
     }
-    await route.fulfill({ json: posted ? [{ id: 'job-123', status: 'completed', createdAt: '2026-01-02T03:04:05Z', file: '/api/jobs/job-123/download', settings: submitted }] : [] });
+    await route.fulfill({ json: posted ? [{ id: 'job-123', status: 'completed', createdAt: '2026-01-02T03:04:05Z', title: 'Chaos of E2E', file: '/api/jobs/job-123/download', settings: submitted }] : [] });
   });
   await page.route('**/api/jobs/job-123/download', (route) => route.fulfill({
     status: 200,
@@ -69,7 +69,8 @@ test('submits selected settings, displays a completed build, and downloads its W
   await page.locator('[name="option.enabled"]').selectOption('0');
   await page.getByRole('button', { name: /Generate WAD/ }).click();
 
-  await expect(page.getByText(/OBSIDIAN-.*123/i)).toBeVisible();
+  await expect(page.locator('.job[data-job-id="job-123"] .job-info strong')).toHaveText('Chaos of E2E');
+  await expect(page.locator('.job[data-job-id="job-123"] .job-info small')).toContainText('GAME DOOM1 · LENGTH single');
   await page.locator('.job[data-job-id="job-123"] > summary').click();
   await expect(page.getByRole('link', { name: /Download WAD/ })).toBeVisible();
   const playHref = await page.getByRole('link', { name: /Play in UZDoom/ }).getAttribute('href');
@@ -379,8 +380,11 @@ test('failed runs can be deleted', async ({ page }) => {
   await page.goto('/');
   const card = page.locator('.job[data-job-id="failed-delete"]');
   await card.locator(':scope > summary').click();
+  const deleteButton = card.getByRole('button', { name: 'Delete failed run' });
+  await expect(deleteButton).toHaveCSS('font-family', /DM Mono/);
+  await expect(deleteButton).toHaveCSS('border-top-color', 'rgb(111, 73, 64)');
   const confirm = page.waitForEvent('dialog');
-  const removeRun = card.getByRole('button', { name: 'Delete failed run' }).click();
+  const removeRun = deleteButton.click();
   await (await confirm).accept();
   await removeRun;
   await expect(page.getByText('No runs yet')).toBeVisible();
